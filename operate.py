@@ -165,9 +165,6 @@ class CameraOperate:
         self.is_open = False
         self.camera_obj.MV_CC_DestroyHandle()
 
-    def set_param(self, param_name, param_value):
-        ret = self.camera_obj.MV_CC_SetIntValue(param_name, param_value)
-
 
 def decoding_char(c_ubyte_value):
     c_char_p_value = ctypes.cast(c_ubyte_value, ctypes.c_char_p)
