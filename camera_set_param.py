@@ -1,9 +1,7 @@
-import re
-
 from camera_exception import CameraError
-from MvImport.MvCameraControl_class import MvCamCtrldll, MvCamera
+from MvImport.MvCameraControl_class import MvCamera
 from MvImport.MvErrorDefine_const import MV_OK
-from operate import to_hex_str
+from util import to_hex_str
 
 
 class CameraSetParam:
