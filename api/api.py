@@ -118,3 +118,13 @@ def close_camera(serial: str | None = None):
         log.debug(f"{serial}相机即将执行关闭")
         camera_control_dict[serial].camera_operate.close_camera()
         log.info(f"{serial}相机关闭成功")
+
+
+def restart_camera(serial: str | None = None):
+    serial_list = check_camera_serial(serial)
+    for serial in serial_list:
+        log.debug(f"{serial}相机即将执行重启")
+        camera_control_dict[serial].camera_operate.close_camera()
+        sleep(1)
+        camera_control_dict[serial].camera_operate.open_camera()
+        log.info(f"{serial}相机重启成功")
