@@ -1,13 +1,12 @@
 import threading
 from ctypes import byref, c_ubyte, cdll, memset, sizeof
-from logging import log
 
 from control.camera_context import CameraContext
 from exception.camera_exception import CameraError
+from logger.logger import log
 from MvImport.CameraParams_header import MV_FRAME_OUT, MV_FRAME_OUT_INFO_EX
-from MvImport.MvCameraControl_class import MvCamera
 from MvImport.MvErrorDefine_const import MV_OK
-from util.util import decoding_char, to_hex_str
+from util.util import to_hex_str
 
 
 class CameraThread:
@@ -47,6 +46,7 @@ class CameraThread:
         while not exit_flag.is_set():
             ret = self.camera_context.camera_obj.MV_CC_GetImageBuffer(stOutFrame, 1000)
             if ret == MV_OK:
+                log.debug(f"{self.camera_context.serial_no}相机检测到图片数据")
                 self.buf_lock.acquire()
                 if self.buf_save_image_len < stOutFrame.stFrameInfo.nFrameLen:
                     if self.buf_save_image is not None:
@@ -69,7 +69,6 @@ class CameraThread:
                 self.buf_lock.release()
                 self.camera_context.camera_obj.MV_CC_FreeImageBuffer(stOutFrame)
             else:
-                serial = decoding_char(
-                    self.camera_context.device_info.SpecialInfo.stGigEInfo.chSerialNumber
+                log.debug(
+                    f"主动取图中，{self.camera_context.serial_no}没有图像数据[{to_hex_str(ret)}]"
                 )
-                log.debug(f"主动取图中，{serial}没有图像数据[{to_hex_str(ret)}]")

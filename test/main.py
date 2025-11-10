@@ -1,5 +1,11 @@
-from control.camera_control import get_device_list
+from time import sleep
+
+import api.api as api
 
 if __name__ == "__main__":
-    device_list = get_device_list()
-    print(device_list)
+    serial_list = api.get_camara_list()
+    print(serial_list)
+    api.open_camera()
+    api.start_grabbing()
+    sleep(2)
+    api.trigger_camera()
