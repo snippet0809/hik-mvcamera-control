@@ -98,7 +98,6 @@ def trigger_camera(serial: str | None = None, image_path_prefix: str | None = No
         if len(serial_list) == 0:
             log.info(f"已获取所有图片")
             break
-    log.debug("已跳出循环")
     if len(serial_list) > 0:
         raise CameraError("获取图片超时")
     else:
