@@ -4,7 +4,7 @@ import threading
 from ctypes import POINTER, byref, c_ubyte, cast, cdll, memset, sizeof
 
 from camera_exception import CameraError
-from camera_set_param import CameraSetParam
+from control.camera_set_param import CameraSetParam
 from logger import log
 from MvImport.CameraParams_const import MV_GIGE_DEVICE, MV_ACCESS_Exclusive
 from MvImport.CameraParams_header import (
@@ -64,7 +64,7 @@ class CameraOperate:
         if not self.is_open:
             raise CameraError("开始取流失败，请先打开相机")
         if self.is_grabbing:
-            logging.warning("开始取流指令未发出，因为相机已处于取流状态")
+            log.warning("开始取流指令未发出，因为相机已处于取流状态")
             return
         result = self.camera_obj.MV_CC_StartGrabbing()
         if result != MV_OK:

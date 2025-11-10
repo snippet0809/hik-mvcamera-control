@@ -1,5 +1,5 @@
 from camera_exception import CameraError
-from camera_operate import CameraOperate, decoding_char
+from control.camera_operate import CameraOperate, decoding_char
 from MvImport.MvCameraControl_class import *
 
 camera_dict: dict[str, MvCamera] = dict()
