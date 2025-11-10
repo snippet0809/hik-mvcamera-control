@@ -3,9 +3,9 @@ import datetime
 import threading
 from ctypes import POINTER, byref, c_ubyte, cast, cdll, memset, sizeof
 
-from camera_exception import CameraError
+from exception.camera_exception import CameraError
 from control.camera_set_param import CameraSetParam
-from logger import log
+from logger.logger import log
 from MvImport.CameraParams_const import MV_GIGE_DEVICE, MV_ACCESS_Exclusive
 from MvImport.CameraParams_header import (
     MV_CC_DEVICE_INFO,
@@ -16,7 +16,7 @@ from MvImport.CameraParams_header import (
 )
 from MvImport.MvCameraControl_class import MvCamera
 from MvImport.MvErrorDefine_const import MV_OK
-from util import decoding_char, to_hex_str
+from util.util import decoding_char, to_hex_str
 
 
 class CameraOperate:

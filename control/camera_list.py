@@ -1,4 +1,4 @@
-from camera_exception import CameraError
+from exception.camera_exception import CameraError
 from control.camera_operate import CameraOperate, decoding_char
 from MvImport.MvCameraControl_class import *
 
