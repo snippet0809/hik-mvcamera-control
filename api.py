@@ -1,6 +1,3 @@
-
-
-
 def get_camara_list():
     pass
 
