@@ -105,8 +105,16 @@ def trigger_camera(serial: str | None = None, image_path_prefix: str | None = No
 
 
 def stop_grabbing(serial: str | None = None):
-    pass
+    serial_list = check_camera_serial(serial)
+    for serial in serial_list:
+        log.debug(f"{serial}相机即将执行停止采集")
+        camera_control_dict[serial].camera_operate.stop_grabbing()
+        log.info(f"{serial}相机停止采集成功")
 
 
 def close_camera(serial: str | None = None):
-    pass
+    serial_list = check_camera_serial(serial)
+    for serial in serial_list:
+        log.debug(f"{serial}相机即将执行关闭")
+        camera_control_dict[serial].camera_operate.close_camera()
+        log.info(f"{serial}相机关闭成功")

@@ -7,5 +7,8 @@ if __name__ == "__main__":
     print(serial_list)
     api.open_camera()
     api.start_grabbing()
-    sleep(2)
-    api.trigger_camera()
+    for i in range(10):
+        api.trigger_camera()
+        sleep(8)
+    api.stop_grabbing()
+    api.close_camera()
