@@ -1,8 +1,10 @@
+import asyncio
 import os
 from datetime import datetime
 from time import sleep
 
 from control.camera_control import CameraControl, get_device_list
+from control.camera_image import CameraTriggerResult
 from exception.camera_exception import CameraError
 from logger.logger import log
 from util.util import decoding_char
@@ -60,7 +62,9 @@ def start_grabbing(
         log.info(f"{serial}相机开始采集成功")
 
 
-def trigger_camera(serial: str | None = None, image_path_prefix: str | None = None):
+async def trigger_camera(
+    serial: str | None = None, image_path_prefix: str | None = None
+):
     if image_path_prefix is None:
         image_path_prefix = os.path.join(
             os.path.expanduser("~"),
@@ -74,27 +78,29 @@ def trigger_camera(serial: str | None = None, image_path_prefix: str | None = No
         log.debug(f"{serial}相机即将执行软触发")
         camera_control_dict[serial].camera_image.soft_trigger()
         log.info(f"{serial}相机软触发成功")
-    sleep(0.5)
+    await asyncio.sleep(0.5)
     now = datetime.now().timestamp()
     image_dict: dict[str, str] = dict()
     while datetime.now().timestamp() < now + 5:
+        task_list: list[asyncio.Task[CameraTriggerResult]] = []
         for serial in serial_list:
-            try:
-                result = camera_control_dict[serial].camera_image.save_image(
-                    image_path_prefix
-                )
+            task: asyncio.Task[CameraTriggerResult] = asyncio.create_task(
+                camera_control_dict[serial].camera_image.save_image(image_path_prefix)
+            )
+            task_list.append(task)
+        results = await asyncio.gather(*task_list, return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, CameraError):
+                log.debug(f"{result.err_msg}[{result.err_code}]")
+            elif isinstance(result, CameraTriggerResult):
                 if (
-                    camera_frame_no_dict.get(serial) is None
-                    or camera_frame_no_dict.get(serial) != result.frame_no
+                    camera_frame_no_dict.get(serial_list[i]) is None
+                    or camera_frame_no_dict.get(serial_list[i]) != result.frame_no
                 ):
-                    camera_frame_no_dict[serial] = result.frame_no
-                    image_dict[serial] = result.image_path
-                    serial_list.remove(serial)
+                    camera_frame_no_dict[serial_list[i]] = result.frame_no
+                    image_dict[serial_list[i]] = result.image_path
+                    serial_list.remove(serial_list[i])
                     log.info(f"{serial}相机图片保存成功{result.image_path}")
-            except CameraError as e:
-                log.debug(f"{e.err_msg}[{e.err_code}]")
-                pass
-
         if len(serial_list) == 0:
             log.info(f"已获取所有图片")
             break
