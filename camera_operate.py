@@ -1,11 +1,11 @@
 import ctypes
 import datetime
-import logging
 import threading
 from ctypes import POINTER, byref, c_ubyte, cast, cdll, memset, sizeof
 
 from camera_exception import CameraError
 from camera_set_param import CameraSetParam
+from logger import log
 from MvImport.CameraParams_const import MV_GIGE_DEVICE, MV_ACCESS_Exclusive
 from MvImport.CameraParams_header import (
     MV_CC_DEVICE_INFO,
@@ -17,11 +17,6 @@ from MvImport.CameraParams_header import (
 from MvImport.MvCameraControl_class import MvCamera
 from MvImport.MvErrorDefine_const import MV_OK
 from util import decoding_char, to_hex_str
-
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-log = logging.getLogger(__name__)
 
 
 class CameraOperate:
