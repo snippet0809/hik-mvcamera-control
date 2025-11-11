@@ -2,7 +2,6 @@ import asyncio
 import os
 from datetime import datetime
 from time import sleep
-from tkinter import NO
 
 from control.camera_control import CameraControl, get_device_list
 from control.camera_image import CameraTriggerResult
