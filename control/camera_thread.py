@@ -1,5 +1,6 @@
 import threading
 from ctypes import byref, c_ubyte, cdll, memset, sizeof
+from time import sleep
 
 from control.camera_context import CameraContext
 from exception.camera_exception import CameraError
@@ -72,3 +73,4 @@ class CameraThread:
                 log.debug(
                     f"主动取图中，{self.camera_context.serial_no}没有图像数据[{to_hex_str(ret)}]"
                 )
+                sleep(0.1)
