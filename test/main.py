@@ -1,3 +1,4 @@
+import asyncio
 from time import sleep
 
 import api.api as api
@@ -8,7 +9,7 @@ if __name__ == "__main__":
     api.open_camera()
     api.start_grabbing()
     for i in range(10):
-        api.trigger_camera()
+        asyncio.run(api.trigger_camera())
         sleep(8)
     api.stop_grabbing()
     api.close_camera()

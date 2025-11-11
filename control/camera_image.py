@@ -30,7 +30,7 @@ class CameraImage:
         if ret != MV_OK:
             raise CameraError("软触发失败", to_hex_str(ret))
 
-    def save_image(self, image_path_prefix: str):
+    async def save_image(self, image_path_prefix: str):
         if self.camera_thread.buf_save_image == None:
             raise CameraError(f"{self.camera_context.serial_no}相机未检测到图片数据")
         # 获取缓存锁
