@@ -58,6 +58,7 @@ def start_grabbing(
         log.debug(f"{serial}相机停止采集成功，准备执行开始采集操作")
         camera_control_dict[serial].camera_operate.start_grabbing()
         log.info(f"{serial}相机开始采集成功")
+        camera_frame_no_dict[serial] = 0
 
 
 def trigger_camera(serial: str | None = None, image_path_prefix: str | None = None):
