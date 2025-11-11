@@ -30,13 +30,19 @@ class CameraImage:
         if ret != MV_OK:
             raise CameraError("软触发失败", to_hex_str(ret))
 
-    async def save_image(self, image_path_prefix: str):
+    async def save_image(
+        self, image_path_prefix: str, last_frame_no: int | None = None
+    ):
         if self.camera_thread.buf_save_image == None:
             raise CameraError(f"{self.camera_context.serial_no}相机未检测到图片数据")
         # 获取缓存锁
         self.camera_thread.buf_lock.acquire()
+        current_frame_no = self.camera_thread.frame_info.nFrameNum
+        if last_frame_no == current_frame_no:
+            self.camera_thread.buf_lock.release()
+            raise CameraError(f"{self.camera_context.serial_no}相机最新帧数据还未更新")
         now = datetime.datetime.now().strftime("%y%m%d%H%M%S")
-        image_name = now + "_" + str(self.camera_thread.frame_info.nFrameNum) + ".jpeg"
+        image_name = now + "_" + str(current_frame_no) + ".jpeg"
         file_path = os.path.join(image_path_prefix, image_name)
         c_file_path = file_path.encode("ascii")
         stSaveParam = MV_SAVE_IMAGE_TO_FILE_PARAM_EX()

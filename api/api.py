@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 from time import sleep
+from tkinter import NO
 
 from control.camera_control import CameraControl, get_device_list
 from control.camera_image import CameraTriggerResult
@@ -86,13 +87,18 @@ async def trigger_camera(
         task_list: list[asyncio.Task[CameraTriggerResult]] = []
         for serial in serial_list:
             task: asyncio.Task[CameraTriggerResult] = asyncio.create_task(
-                camera_control_dict[serial].camera_image.save_image(image_path_prefix)
+                camera_control_dict[serial].camera_image.save_image(
+                    image_path_prefix, camera_frame_no_dict.get(serial)
+                )
             )
             task_list.append(task)
         results = await asyncio.gather(*task_list, return_exceptions=True)
         for i, result in enumerate(results):
             if isinstance(result, CameraError):
-                log.debug(f"{result.err_msg}[{result.err_code}]")
+                if result.err_code is None:
+                    log.debug(f"{result.err_msg}")
+                else:
+                    log.debug(f"{result.err_msg}[{result.err_code}]")
             elif isinstance(result, CameraTriggerResult):
                 if (
                     camera_frame_no_dict.get(serial_list[i]) is None
