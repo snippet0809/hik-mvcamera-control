@@ -3,11 +3,11 @@ import os
 from datetime import datetime
 from time import sleep
 
-from control.camera_control import CameraControl, get_device_list
-from control.camera_image import CameraTriggerResult
-from exception.camera_exception import CameraError
-from logger.logger import log
-from util.util import decoding_char
+from hik_mvcamera_control.control.camera_control import CameraControl, get_device_list
+from hik_mvcamera_control.control.camera_image import CameraTriggerResult
+from hik_mvcamera_control.exception.camera_exception import CameraError
+from hik_mvcamera_control.logger.logger import log
+from hik_mvcamera_control.util.util import decoding_char
 
 camera_control_dict: dict[str, CameraControl] = dict()
 camera_frame_no_dict: dict[str, int] = dict()

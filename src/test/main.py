@@ -1,7 +1,12 @@
 import asyncio
+import os
+import sys
 from time import sleep
 
-import api.api as api
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+
+import hik_mvcamera_control.api.api as api
 
 if __name__ == "__main__":
     serial_list = api.get_camara_list()

@@ -1,8 +1,8 @@
-from exception.camera_exception import CameraError
-from MvImport.CameraParams_header import MV_CC_DEVICE_INFO
-from MvImport.MvCameraControl_class import MvCamera
-from MvImport.MvErrorDefine_const import MV_OK
-from util.util import decoding_char, to_hex_str
+from hik_mvcamera_control.exception.camera_exception import CameraError
+from hik_mvcamera_control.MvImport.CameraParams_header import MV_CC_DEVICE_INFO
+from hik_mvcamera_control.MvImport.MvCameraControl_class import MvCamera
+from hik_mvcamera_control.MvImport.MvErrorDefine_const import MV_OK
+from hik_mvcamera_control.util.util import decoding_char, to_hex_str
 
 
 class CameraContext:

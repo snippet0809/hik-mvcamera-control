@@ -1,15 +1,21 @@
 from ctypes import POINTER, cast
 
-from control.camera_context import CameraContext
-from control.camera_image import CameraImage
-from control.camera_operate import CameraOperate
-from control.camera_set_param import CameraSetParam
-from control.camera_thread import CameraThread
-from exception.camera_exception import CameraError
-from MvImport.CameraParams_const import MV_GIGE_DEVICE, MV_USB_DEVICE
-from MvImport.CameraParams_header import MV_CC_DEVICE_INFO, MV_CC_DEVICE_INFO_LIST
-from MvImport.MvCameraControl_class import MvCamera
-from MvImport.MvErrorDefine_const import MV_OK
+from hik_mvcamera_control.control.camera_context import CameraContext
+from hik_mvcamera_control.control.camera_image import CameraImage
+from hik_mvcamera_control.control.camera_operate import CameraOperate
+from hik_mvcamera_control.control.camera_set_param import CameraSetParam
+from hik_mvcamera_control.control.camera_thread import CameraThread
+from hik_mvcamera_control.exception.camera_exception import CameraError
+from hik_mvcamera_control.MvImport.CameraParams_const import (
+    MV_GIGE_DEVICE,
+    MV_USB_DEVICE,
+)
+from hik_mvcamera_control.MvImport.CameraParams_header import (
+    MV_CC_DEVICE_INFO,
+    MV_CC_DEVICE_INFO_LIST,
+)
+from hik_mvcamera_control.MvImport.MvCameraControl_class import MvCamera
+from hik_mvcamera_control.MvImport.MvErrorDefine_const import MV_OK
 
 
 class CameraControl:

@@ -1,6 +1,3 @@
-from tkinter import NO
-
-
 class CameraError(Exception):
     def __init__(self, err_msg: str, err_code: str | None = None):
         self.err_msg = err_msg
