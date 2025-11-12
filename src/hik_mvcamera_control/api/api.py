@@ -13,7 +13,7 @@ camera_control_dict: dict[str, CameraControl] = dict()
 camera_frame_no_dict: dict[str, int] = dict()
 
 
-def get_camara_list():
+def get_camera_list():
     device_list = get_device_list()
     global camera_control_dict
     for device in device_list:
