@@ -18,7 +18,9 @@ def get_camara_list():
     global camera_control_dict
     for device in device_list:
         serial = decoding_char(device.SpecialInfo.stGigEInfo.chSerialNumber)
-        camera_control_dict[serial] = CameraControl(device)
+        # 不要重复创建相机句柄，可能会出问题
+        if camera_control_dict.get(serial) is None:
+            camera_control_dict[serial] = CameraControl(device)
     return list(camera_control_dict.keys())
 
 
