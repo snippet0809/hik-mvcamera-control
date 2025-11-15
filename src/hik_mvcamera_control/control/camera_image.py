@@ -45,7 +45,9 @@ class CameraImage:
             self.camera_thread.buf_lock.release()
             raise CameraError(f"{self.camera_context.serial_no}相机最新帧数据还未更新")
         now = datetime.datetime.now().strftime("%y%m%d%H%M%S")
-        image_name = now + "_" + str(current_frame_no) + ".jpeg"
+        image_name = (
+            self.camera_context.serial_no + now + "_" + str(current_frame_no) + ".jpeg"
+        )
         file_path = os.path.join(image_path_prefix, image_name)
         c_file_path = file_path.encode("ascii")
         stSaveParam = MV_SAVE_IMAGE_TO_FILE_PARAM_EX()

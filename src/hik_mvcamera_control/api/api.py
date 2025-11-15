@@ -70,11 +70,7 @@ async def trigger_camera(
 ):
     if image_path_prefix is None:
         image_path_prefix = os.path.join(
-            os.path.expanduser("~"),
-            ".yspinfo",
-            "hik-mvcamera-control",
-            "image",
-            datetime.now().strftime("%Y-%m"),
+            os.path.expanduser("~"), "Pictures", "hik-mvcamera-control"
         )
     serial_list = check_camera_serial(serial)
     for serial in serial_list:
