@@ -6,10 +6,7 @@ from hik_mvcamera_control.control.camera_operate import CameraOperate
 from hik_mvcamera_control.control.camera_set_param import CameraSetParam
 from hik_mvcamera_control.control.camera_thread import CameraThread
 from hik_mvcamera_control.exception.camera_exception import CameraError
-from hik_mvcamera_control.MvImport.CameraParams_const import (
-    MV_GIGE_DEVICE,
-    MV_USB_DEVICE,
-)
+from hik_mvcamera_control.MvImport.CameraParams_const import MV_GIGE_DEVICE
 from hik_mvcamera_control.MvImport.CameraParams_header import (
     MV_CC_DEVICE_INFO,
     MV_CC_DEVICE_INFO_LIST,
@@ -33,7 +30,7 @@ def get_device_list():
     if result != MV_OK:
         raise CameraError("相机初始化失败", result)
     deviceList = MV_CC_DEVICE_INFO_LIST()
-    result = MvCamera.MV_CC_EnumDevices((MV_GIGE_DEVICE | MV_USB_DEVICE), deviceList)
+    result = MvCamera.MV_CC_EnumDevices((MV_GIGE_DEVICE), deviceList)
     if result != MV_OK:
         raise CameraError("枚举设备失败", result)
     return [
