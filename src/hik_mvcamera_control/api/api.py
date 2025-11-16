@@ -29,7 +29,7 @@ def check_camera_serial(serial: str | None) -> list[str]:
     if serial is None:
         serial_list = list(camera_control_dict.keys())
     else:
-        if camera_control_dict[serial] is None:
+        if camera_control_dict.get("serial") is None:
             raise CameraError(f"未找到序列号为{serial}的设备")
         else:
             serial_list.append(serial)
