@@ -90,6 +90,7 @@ async def trigger_camera(
             )
             task_list.append(task)
         results = await asyncio.gather(*task_list, return_exceptions=True)
+        need_remove_serial: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, CameraError):
                 if result.err_code is None:
@@ -103,8 +104,11 @@ async def trigger_camera(
                 ):
                     camera_frame_no_dict[serial_list[i]] = result.frame_no
                     image_dict[serial_list[i]] = result.image_path
-                    serial_list.remove(serial_list[i])
+                    need_remove_serial.append(serial_list[i])
                     log.info(f"{serial}相机图片保存成功{result.image_path}")
+        # 必须统一remove，否则会数组下标越界
+        for item in need_remove_serial:
+            serial_list.remove(item)
         if len(serial_list) == 0:
             log.info(f"已获取所有图片")
             break
