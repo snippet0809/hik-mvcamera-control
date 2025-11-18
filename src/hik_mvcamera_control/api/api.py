@@ -19,7 +19,7 @@ def get_camera_list():
     for device in device_list:
         serial = decoding_char(device.SpecialInfo.stGigEInfo.chSerialNumber)
         # 不要重复创建相机句柄，可能会出问题("00开头的是USB读码器，只检测GIGE_DEVICE也会返回读码器")
-        if camera_control_dict.get(serial) is None and not serial.startswith("00"):
+        if camera_control_dict.get(serial) is None and not serial.startswith("00DA"):
             camera_control_dict[serial] = CameraControl(device)
     return list(camera_control_dict.keys())
 
