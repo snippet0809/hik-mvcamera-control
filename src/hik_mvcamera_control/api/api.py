@@ -21,7 +21,7 @@ def get_camera_list():
         # 不要重复创建相机句柄，可能会出问题("00开头的是USB读码器，只检测GIGE_DEVICE也会返回读码器")
         if camera_control_dict.get(serial) is None and not serial.startswith("00DA"):
             camera_control_dict[serial] = CameraControl(device)
-    log.debug(f"枚举相机结果: {camera_control_dict.keys()}")
+    log.debug(f"枚举相机结果: {list(camera_control_dict.keys())}")
     return list(camera_control_dict.keys())
 
 
@@ -30,7 +30,7 @@ def check_camera_serial(serial: str | None) -> list[str]:
     if serial is None:
         serial_list = list(camera_control_dict.keys())
     else:
-        log.debug(f"当前相机列表: {camera_control_dict.keys()}")
+        log.debug(f"当前相机列表: {list(camera_control_dict.keys())}")
         if camera_control_dict.get(serial) is None:
             raise CameraError(f"未找到序列号为{serial}的设备")
         else:
