@@ -1,18 +1,4 @@
-import ctypes
-import datetime
-import os
-from ctypes import POINTER, c_ubyte, cast
-
-from hik_mvcamera_control.control.camera_context import CameraContext
-from hik_mvcamera_control.control.camera_thread import CameraThread
-from hik_mvcamera_control.exception.camera_exception import CameraError
-from hik_mvcamera_control.MvImport.CameraParams_header import (
-    MV_SAVE_IMAGE_TO_FILE_PARAM_EX,
-    MV_Image_Jpeg,
-)
-from hik_mvcamera_control.MvImport.MvErrorDefine_const import MV_OK
-from hik_mvcamera_control.util.util import to_hex_str
-
+#include "camera_ori.h"
 
 class CameraTriggerResult:
     def __init__(self, image_path: str, frame_no: int):

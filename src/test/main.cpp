@@ -1,14 +1,7 @@
-import asyncio
-import os
-import sys
-from time import sleep
+#include "camera_ori.h"
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-
-import hik_mvcamera_control.api.api as api
-
-if __name__ == "__main__":
+void main()
+{
     serial_list = api.get_camara_list()
     print(serial_list)
     api.open_camera()
@@ -18,3 +11,4 @@ if __name__ == "__main__":
         sleep(8)
     api.stop_grabbing()
     api.close_camera()
+}

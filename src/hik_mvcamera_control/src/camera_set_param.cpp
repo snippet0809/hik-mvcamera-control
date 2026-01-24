@@ -1,8 +1,4 @@
-from hik_mvcamera_control.control.camera_context import CameraContext
-from hik_mvcamera_control.exception.camera_exception import CameraError
-from hik_mvcamera_control.MvImport.MvErrorDefine_const import MV_OK
-from hik_mvcamera_control.util.util import to_hex_str
-
+#include "camera_ori.h"
 
 class CameraSetParam:
 
