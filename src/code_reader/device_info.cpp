@@ -46,6 +46,6 @@ CodeReader *getDevice(std::string sn, bool createIfNotExist) {
     return nullptr;
 }
 
-void destoryDevice(std::string sn) {
+void destroyDevice(std::string sn) {
     deviceMap.erase(sn);
 }
