@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-std::unordered_map<std::string, CodeReader *> deviceMap;
+std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
 CodeReader::CodeReader(std::string sn) {
     int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, sn.c_str());
@@ -33,12 +33,19 @@ std::vector<CodeReaderInfo> enumDevice() {
     return infos;
 }
 
-CodeReader *getDevice(std::string sn) {
+CodeReader *getDevice(std::string sn, bool createIfNotExist) {
     auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
-        return it->second;
+        return it->second.get();
     }
-    CodeReader *cr = &CodeReader(sn);
-    deviceMap[sn] = cr;
-    return cr;
+    if (createIfNotExist) {
+        auto cr = std::make_shared<CodeReader>(sn);
+        deviceMap[sn] = cr;
+        return cr.get();
+    }
+    return nullptr;
+}
+
+void destoryDevice(std::string sn) {
+    deviceMap.erase(sn);
 }

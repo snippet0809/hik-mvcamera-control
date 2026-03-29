@@ -27,18 +27,12 @@ public:
 
     void open();
     void grabbing();
-    void stopGrabbing();
     void close();
-
-    void setIp();
-    void setIntValue();
-    void setStringValue();
-    void setBoolValue();
-    void setFloatValue();
 };
 
 std::vector<CodeReaderInfo> enumDevice();
-CodeReader *getDevice(std::string sn);
+CodeReader *getDevice(std::string sn, bool createIfNotExist);
+void destroyDevice(std::string sn);
 
 void startDevice(std::string sn);
 void stopDevice(std::string sn);

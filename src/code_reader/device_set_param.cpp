@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-
-
 /**
  * 设置IP，请注意一下两点
  *
@@ -18,29 +16,54 @@
  * @param gateway 网关
  */
 void setIp(std::string sn, std::string ip, std::string mask, std::string gateway) {
-    // 先关闭设备，再获取句柄，这样无论句柄是否是新建的，设备总处于关闭状态
-    stopDevice(sn);
-    void *handle = getHandle(sn, true);
+    CodeReader *device = getDevice(sn, true);
+    device->open();
     // 设置IP
-    int ok = MV_CODEREADER_GIGE_ForceIp(handle, ipToInt(ip), ipToInt(mask), ipToInt(gateway));
+    int ok = MV_CODEREADER_GIGE_ForceIp(device->handle, ipToInt(ip), ipToInt(mask), ipToInt(gateway));
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_GIGE_ForceIp error: " + toHexStr(ok));
     }
     // 因为设备会自动重启，所以要把句柄销毁
-    destroyHandle(sn);
+    destroyDevice(sn);
 }
+
 /**
  * 设置int类型的参数
  *
  * 注意：此时相机必须处于【已打开+未取流】状态
  */
 void setIntValue(std::string sn, std::string key, int value) {
-
-
-    int ok = MV_CODEREADER_SetIntValue(handle, key.c_str(), value);
+    CodeReader *device = getDevice(sn, true);
+    device->open();
+    int ok = MV_CODEREADER_SetIntValue(device->handle, key.c_str(), value);
     if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("")
+        throw std::runtime_error("MV_CODEREADER_SetIntValue error: " + toHexStr(ok));
     }
 }
 
-void setFloatValue(std::string sn, std::string key)
+void setFloatValue(std::string sn, std::string key, float value) {
+    CodeReader *device = getDevice(sn, true);
+    device->open();
+    int ok = MV_CODEREADER_SetFloatValue(device->handle, key.c_str(), value);
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error("MV_CODEREADER_SetFloatValue error: " + toHexStr(ok));
+    }
+}
+
+void setBoolValue(std::string sn, std::string key, bool value) {
+    CodeReader *device = getDevice(sn, true);
+    device->open();
+    int ok = MV_CODEREADER_SetBoolValue(device->handle, key.c_str(), value);
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error("MV_CODEREADER_SetBoolValue error: " + toHexStr(ok));
+    }
+}
+
+void setStringValue(std::string sn, std::string key, std::string value) {
+    CodeReader *device = getDevice(sn, true);
+    device->open();
+    int ok = MV_CODEREADER_SetStringValue(device->handle, key.c_str(), value.c_str());
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error("MV_CODEREADER_SetStringValue error: " + toHexStr(ok));
+    }
+}
