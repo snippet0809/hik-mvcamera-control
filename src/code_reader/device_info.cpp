@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-std::unordered_map<std::string, CodeReader> deviceMap;
+std::unordered_map<std::string, CodeReader *> deviceMap;
 
 CodeReader::CodeReader(std::string sn) {
     int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, sn.c_str());
@@ -18,9 +18,6 @@ CodeReader::~CodeReader() {
     MV_CODEREADER_DestroyHandle(this->handle);
 }
 
-/**
- * 枚举读码器
- */
 std::vector<CodeReaderInfo> enumDevice() {
     MV_CODEREADER_DEVICE_INFO_LIST stDevList{};
     int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
@@ -36,47 +33,12 @@ std::vector<CodeReaderInfo> enumDevice() {
     return infos;
 }
 
-/**
- * 创建句柄
- *
- * @param sn 设备序列号
- * @return 句柄
- */
-void *createHandle(std::string sn) {
-    void *handle = nullptr;
-    int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, sn.c_str());
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
-    }
-    deviceMap[sn] = handle;
-    return handle;
-}
-
-/**
- * 销毁句柄
- *
- * @param sn 设备序列号
- */
-void destroyHandle(std::string sn) {
-    auto it = deviceMap.find(sn);
-    if (it != deviceMap.end()) {
-        MV_CODEREADER_DestroyHandle(it->second);
-        deviceMap.erase(it);
-    }
-}
-
-/**
- * 获取句柄，如果句柄不存在则新建
- *
- * @param sn 设备序列号
- * @return 句柄
- */
-void *getHandle(std::string sn, bool createIfNotExist) {
-    // 句柄已存在
+CodeReader *getDevice(std::string sn) {
     auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
         return it->second;
     }
-    // 句柄不存在
-    return createHandle(sn);
+    CodeReader *cr = &CodeReader(sn);
+    deviceMap[sn] = cr;
+    return cr;
 }
