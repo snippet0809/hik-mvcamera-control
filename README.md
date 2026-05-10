@@ -2,6 +2,41 @@
 
 围绕海康机器人 **机器视觉 SDK** 的本地封装与工程骨架：仓库中已包含 **读码器（MvCodeReader）** 的头文件与静态库，当前 `src` 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 **稳定 C ABI**（`include/hik_code_reader/c_api.h` + `c_api.cpp`），便于 **Python（ctypes）** 与 **Go（cgo）** 等语言加载 `hik_code_reader` 共享库调用。`include/lib` 下同时提供了 **工业相机（MvCamera）** 相关 SDK 文件，便于后续扩展相机侧逻辑。
 
+## 项目架构（分层与自动化）
+
+### 运行时与代码分层
+
+自底向上：**厂商 SDK**（`include/`、`lib/` 中海康头文件与导入库）→ **`src/code_reader/`** C++ 封装（设备、参数、回调等）→ **导出 DLL** `hik_code_reader.dll` 及 **C ABI**（`hik_cr_*`）→ 上层语言通过 **FFI** 加载同一份 DLL：
+
+```mermaid
+flowchart TB
+  SDK["海康 MvCodeReader\n头文件 / .lib"]
+  CPP["C++ 封装\nsrc/code_reader/"]
+  CAPI["C ABI\nc_api.h / c_api.cpp"]
+  DLL["hik_code_reader.dll"]
+  PY["python/hik_code_reader\n正式 wheel"]
+  G["ffi/go/hikcr\ncgo"]
+  PYref["ffi/python\nctypes 参考"]
+  SDK --> CPP --> CAPI --> DLL
+  DLL --> PY
+  DLL --> G
+  DLL -.-> PYref
+```
+
+- **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
+- **Python 正式包**：`python/` 下 `build` 打 wheel，构建前将 DLL 拷入 `hik_code_reader/_native/`（CI / 发版流程中完成）。  
+- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库，需在 Windows 上配置好 MSVC 与库路径（见 CI 中示例）。
+
+### GitHub Actions 在流程中的位置
+
+| 环节 | Workflow | 作用（简述） |
+|------|----------|-------------|
+| 日常合并 | **`ci.yml`** | Windows 上编 DLL + wheel，Go 侧 `gofmt` / `mod tidy` / 可选 `go build`。 |
+| 发版 | **`release.yml`** | 打 tag `v*` → 同步 `pyproject` 版本、构建产物、GitHub Release、**`gh-pages`**（含 PEP 503 + 主页）、`ffi/go/v*` 标签。 |
+| 文档页增量 | **`pages-readme.yml`** | 仅 **`main`/`master`** 上 **README** 或 **`.github/scripts/`** 变更时，重生成 **主页** `index.html`，保留已有 **`simple/`**。 |
+
+**站点生成脚本**的模块关系、环境变量与两种模式说明见 **`.github/scripts/README.md`**（与根 README 互补：根文档讲「产品」，该文件讲「Pages 构建脚本怎么拼在一起」）。
+
 ## 功能概览（读码器 C++ 封装）
 
 - **枚举设备**：`enumDevice()`，返回序列号与 GigE 导出 IP 等信息（见 `src/code_reader/device_info.cpp`）。
@@ -125,7 +160,7 @@ import "github.com/you/hik-mvcamera-control/ffi/go/hikcr"
 |----------|------|
 | **CI**（`.github/workflows/ci.yml`） | `pull_request` / 推送到 `main`、`master`：Windows 上构建 DLL、**wheel**，并做 **Go**（`gofmt`、`go mod tidy`、可选 `go build`）校验（不落库、不上传产物）。 |
 | **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）、自动 **`ffi/go/v*`** 标签。 |
-| **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`**（或落地页脚本）时：只重部署 **根 `index.html`**，`keep_files` 保留已有 **`simple/`**，与发版解耦。 |
+| **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`** 或 **`.github/scripts/`** 下站点生成脚本时：只重部署 **根 `index.html`**（入口为 **`generate_pages_site.py`**），`keep_files` 保留 **`simple/`**。 |
 
 ## 仓库结构
 

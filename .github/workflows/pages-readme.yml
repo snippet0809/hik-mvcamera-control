@@ -6,7 +6,12 @@ on:
     branches: [main, master]
     paths:
       - "README.md"
+      - ".github/scripts/generate_pages_site.py"
       - ".github/scripts/gen_pep503_simple.py"
+      - ".github/scripts/pages_landing.py"
+      - ".github/scripts/pep503_simple_index.py"
+      - ".github/scripts/readme_render.py"
+      - ".github/scripts/site_common.py"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +36,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "markdown>=3.5"
-          python .github/scripts/gen_pep503_simple.py
+          python .github/scripts/generate_pages_site.py
 
       - name: Deploy to gh-pages (keep existing simple/)
         uses: peaceiris/actions-gh-pages@v4
