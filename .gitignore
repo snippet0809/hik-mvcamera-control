@@ -1,4 +1,34 @@
-build
+# CMake / local build trees
+build/
+out/
+cmake-build-*/
+
+# Python: wheels/sdists, metadata, bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
 python/dist/
-python/**/*.egg-info/
+
+# Copied in for local wheel builds (tracked: _native/.gitkeep)
 python/hik_code_reader/_native/*.dll
+
+# Local PEP 503 preview / release asset dry-run (see release workflow)
+site/
+publish/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vs/
+.idea/
+*.vcxproj.user
+.DS_Store
+Thumbs.db
+
+# Go test binaries (Windows), local module cache
+ffi/go/**/*.exe
