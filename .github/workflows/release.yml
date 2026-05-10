@@ -1,0 +1,160 @@
+# 推送 v*.*.*：构建 wheel → GitHub Release；生成 PEP 503 索引 → gh-pages（供 pip）
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    outputs:
+      wheel_name: ${{ steps.wheelmeta.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync python/pyproject.toml version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not ($tag -match '^v[0-9]')) { throw "Tag must be vX.Y.Z (e.g. v0.1.0)" }
+          $ver = $tag.Substring(1)
+          $py = "python/pyproject.toml"
+          $c = Get-Content $py -Raw
+          $c = $c -replace '(?m)^version = ".*"', "version = `"$ver`""
+          Set-Content $py $c -NoNewline
+          Write-Host "Set package version to $ver"
+
+      - name: Setup CMake 4.x
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: "4.0.2"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure & build native DLL
+        run: |
+          cmake -S . -B build -A x64
+          cmake --build build --config Release
+
+      - name: Stage DLL for Python wheel
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path python/hik_code_reader/_native | Out-Null
+          Copy-Item -Force "build/Release/hik_code_reader.dll" "python/hik_code_reader/_native/"
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist .
+        working-directory: python
+
+      - name: Zip ffi/go + C header (Go / cgo)
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          $zip = "hik-mvcamera-control-ffi-go-$ver.zip"
+          Compress-Archive -Path "ffi/go", "include/hik_code_reader" -DestinationPath "python/dist/$zip"
+
+      - name: Assemble release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish | Out-Null
+          Copy-Item -Force "python/dist/*" "publish/"
+          Copy-Item -Force "build/Release/hik_code_reader.dll" "publish/"
+          Copy-Item -Force "build/Release/hik_code_reader.lib" "publish/"
+          Get-ChildItem publish
+
+      - id: wheelmeta
+        shell: pwsh
+        run: |
+          $w = Get-ChildItem "python/dist/*.whl" | Select-Object -First 1 -ExpandProperty Name
+          if (-not $w) { throw "No wheel produced" }
+          "name=$w" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: publish/
+
+  publish-release-pages:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure Go submodule tag ffi/go/<same as release>
+        run: |
+          T="ffi/go/${{ github.ref_name }}"
+          if git rev-parse "$T" >/dev/null 2>&1; then
+            echo "Tag $T already exists."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$T" "${{ github.sha }}"
+            git push origin "refs/tags/$T"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifact-publish
+
+      - name: GitHub Release（wheel / zip / dll / lib）
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifact-publish/*
+          body: |
+            ## Python（pip，托管在 GitHub，不经 PyPI）
+            1. 在仓库 **Settings → Pages** 启用 **Branch: `gh-pages` / (root)**（首次发版后才有该分支）。
+            2. 使用 **PEP 503** 索引安装（版本号与 tag 一致，去掉前缀 `v`，例如 tag `v0.1.0` → `0.1.0`）：
+
+            ```bash
+            pip install "hik-code-reader==0.1.0" --index-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/" --trusted-host "${{ github.repository_owner }}.github.io"
+            ```
+
+            或直接安装本 Release 上的 wheel：
+
+            ```bash
+            pip install "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ needs.build-windows.outputs.wheel_name }}"
+            ```
+
+            ## Go（go mod，源码在 GitHub）
+            确保 `ffi/go/go.mod` 第一行为 `module github.com/${{ github.repository }}/ffi/go`。本工作流已自动创建标签 **`ffi/go/${{ github.ref_name }}`**（与 `v*` 指向同一提交，若不存在）。拉取示例：
+
+            ```bash
+            go get "github.com/${{ github.repository }}/ffi/go@${{ github.ref_name }}"
+            ```
+
+            私有仓库可设置：`GOPRIVATE=github.com/${{ github.repository_owner }}/*`
+
+      - name: Fetch existing gh-pages simple index (merge links)
+        run: |
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null || true
+          git show origin/gh-pages:simple/hik-code-reader/index.html > /tmp/prev-simple.html 2>/dev/null || true
+          if [ -s /tmp/prev-simple.html ]; then echo "PREVIOUS_INDEX_HTML=/tmp/prev-simple.html" >> "$GITHUB_ENV"; fi
+
+      - name: Generate PEP 503 site for GitHub Pages
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          WHEEL_FILENAME: ${{ needs.build-windows.outputs.wheel_name }}
+          PEP503_PROJECT: hik-code-reader
+        run: python .github/scripts/gen_pep503_simple.py
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: false
+          keep_files: true

@@ -1,1 +1,4 @@
 build
+python/dist/
+python/**/*.egg-info/
+python/hik_code_reader/_native/*.dll

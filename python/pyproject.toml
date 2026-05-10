@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hik-code-reader"
+version = "0.1.0"
+description = "ctypes bindings for Hikrobot code reader (MvCodeReader) C API — Windows x64 wheel ships native DLL"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary — see repository; Hikvision SDK terms apply" }
+authors = [{ name = "hik-mvcamera-control contributors" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+[project.urls]
+Homepage = "https://github.com/snipp/hik-mvcamera-control"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hik_code_reader*"]
+
+[tool.setuptools.package-data]
+hik_code_reader = ["_native/*.dll", "_native/.gitkeep"]
