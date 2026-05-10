@@ -6,6 +6,7 @@
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
+#include "code_reader_detail.h"
 #include <cstddef>
 #include <stdexcept>
 #include <unordered_map>
@@ -78,6 +79,7 @@ std::vector<CodeReaderInfo> enumDevice() {
 /**
  * 按序列号查找或创建实例。
  * @return createIfNotExist 为 false 且不存在时返回 nullptr
+ * @throws std::runtime_error createIfNotExist 为 true 且 MV_CODEREADER_CreateHandleBySerialNumber 失败时抛出
  */
 CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
     auto it = deviceMap.find(sn);
@@ -92,6 +94,7 @@ CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
     return nullptr;
 }
 
+/** 从缓存移除该序列号实例（如 setIp 成功后设备重启，本地句柄失效）。 */
 void destroyDevice(const std::string &sn) {
     deviceMap.erase(sn);
 }

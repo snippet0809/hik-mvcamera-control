@@ -1,10 +1,11 @@
 /**
  * @file device_set_param.cpp
- * @brief 读码器网络与 GenICam 风格参数设置（GigE 改 IP、整型/浮点/布尔/字符串/枚举等）。
+ * @brief GigE 改 IP（setIp）与 GenICam 节点写参（setIntValue 等）；均要求设备处于 Open（未取流）。
  */
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
+#include "code_reader_detail.h"
 #include <stdexcept>
 #include <string>
 
@@ -16,10 +17,31 @@ void checkSdkOk(int ok, const char *apiName) {
     }
 }
 
+/**
+ * 参数设置要求设备处于 Open（已 OpenDevice、未取流）。
+ * 未缓存 / Connected / Grabbing 均抛 std::logic_error，提示调用方先 openDeviceForParameters 或 stopDevice。
+ */
+CodeReader *requireOpenForParameter(const std::string &sn, const char *caller) {
+    CodeReader *d = getDevice(sn, false);
+    if (d == nullptr) {
+        throw std::logic_error(std::string(caller) +
+                               "：设备未在会话中，请先调用 openDeviceForParameters（需已枚举到该序列号）");
+    }
+    if (d->status == CodeReaderStatus::Grabbing) {
+        throw std::logic_error(std::string(caller) +
+                               "：当前为取流状态，无法设置参数；请先 stopDevice，再调用 openDeviceForParameters");
+    }
+    if (d->status == CodeReaderStatus::Connected) {
+        throw std::logic_error(
+            std::string(caller) + "：设备尚未打开；请先调用 openDeviceForParameters 进入 Open 状态后再试");
+    }
+    return d;
+}
+
+/** 在 Open 状态下调用 apiName 对应的 SDK Set*。 */
 template <typename F>
 void setParamOpened(const std::string &sn, const char *apiName, F &&f) {
-    CodeReader *device = getDevice(sn, true);
-    device->open();
+    CodeReader *device = requireOpenForParameter(sn, apiName);
     checkSdkOk(f(device->handle), apiName);
 }
 
@@ -29,10 +51,11 @@ void setParamOpened(const std::string &sn, const char *apiName, F &&f) {
  * 通过 GigE 强制写入设备 IP / 掩码 / 网关。
  *
  * 请注意：
- * 1. 设置 IP 时设备须处于可接受配置的状态（实现中会先 open）。
+ * 1. 须先 openDeviceForParameters 使设备处于 Open（未取流）；取流中调用将抛异常。
  * 2. 设置成功后设备通常会重启，故成功后 destroyDevice 释放本地句柄。
  *
  * @throws std::invalid_argument IP/掩码/网关格式非法
+ * @throws std::logic_error 设备未缓存、仍为 Connected 或正在 Grabbing 等非 Open 状态
  * @throws std::runtime_error MV_CODEREADER_GIGE_ForceIp 失败时抛出
  */
 void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway) {
@@ -43,8 +66,7 @@ void setIp(const std::string &sn, const std::string &ip, const std::string &mask
         !tryParseIpv4HostOrder(gateway, gwHost)) {
         throw std::invalid_argument("setIp: invalid IPv4 address, mask, or gateway");
     }
-    CodeReader *device = getDevice(sn, true);
-    device->open();
+    CodeReader *device = requireOpenForParameter(sn, "setIp");
     checkSdkOk(MV_CODEREADER_GIGE_ForceIp(device->handle, ipHost, maskHost, gwHost), "MV_CODEREADER_GIGE_ForceIp");
     destroyDevice(sn);
 }
@@ -71,24 +93,6 @@ void setStringValue(const std::string &sn, const std::string &key, const std::st
     setParamOpened(sn, "MV_CODEREADER_SetStringValue", [&](void *h) {
         return MV_CODEREADER_SetStringValue(h, key.c_str(), value.c_str());
     });
-}
-
-CodeReaderEnumValue getEnumValue(const std::string &sn, const std::string &key) {
-    CodeReader *device = getDevice(sn, true);
-    device->open();
-    MV_CODEREADER_ENUMVALUE ev{};
-    int ok = MV_CODEREADER_GetEnumValue(device->handle, key.c_str(), &ev);
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_GetEnumValue error: " + toHexStr(ok));
-    }
-    CodeReaderEnumValue out;
-    out.curValue = ev.nCurValue;
-    unsigned int n = ev.nSupportedNum;
-    if (n > MV_CODEREADER_MAX_XML_SYMBOLIC_NUM) {
-        n = MV_CODEREADER_MAX_XML_SYMBOLIC_NUM;
-    }
-    out.supportedValues.assign(ev.nSupportValue, ev.nSupportValue + n);
-    return out;
 }
 
 void setEnumValue(const std::string &sn, const std::string &key, unsigned int value) {

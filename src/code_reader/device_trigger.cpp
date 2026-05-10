@@ -5,6 +5,7 @@
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
+#include "code_reader_detail.h"
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
@@ -122,7 +123,7 @@ void triggerDevice(const std::string &sn) {
     CodeReader *d = getDevice(sn, false);
     if (d == nullptr) {
         throw std::logic_error(
-            "triggerDevice：设备未缓存，请先创建句柄并 startDevice 进入取流状态后再触发");
+            "triggerDevice：设备未在会话中，请先 startDevice（或曾缓存该序列号）进入取流状态后再触发");
     }
     if (d->status != CodeReaderStatus::Grabbing) {
         throw std::logic_error(

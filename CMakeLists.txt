@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.0)
-project(hk-mvcamera-contrl)
+project(hik-mvcamera-control)
 
-# 下载三方库
+# 通过 FetchContent 获取 GoogleTest 与 fmt
 include(FetchContent)
 FetchContent_Declare(
     googletest

@@ -1,39 +1,48 @@
 /**
  * @file device_control.cpp
- * @brief 设备打开/关闭/取流状态迁移，以及 startDevice / stopDevice。
+ * @brief 设备打开/关闭/取流状态迁移，以及 startDevice、stopDevice、openDeviceForParameters。
  * @note 状态：Connected（仅句柄）→ Open（已 OpenDevice）→ Grabbing（正在取流）。
  */
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
+#include "code_reader_detail.h"
 #include <stdexcept>
 #include <string>
 
 /**
- * 打开设备（OpenDevice），使状态进入「已打开、未取流」（Open）。
+ * 见 code_reader.h。Connected → Open；Grabbing 抛 std::logic_error；已为 Open 则无操作。
+ */
+void openDeviceForParameters(const std::string &sn) {
+    CodeReader *cr = getDevice(sn, true);
+    if (cr->status == CodeReaderStatus::Grabbing) {
+        throw std::logic_error(
+            "openDeviceForParameters：当前为取流状态，请先调用 stopDevice 停止取流后再打开设备以配置参数");
+    }
+    if (cr->status == CodeReaderStatus::Connected) {
+        cr->open();
+    }
+}
+
+/**
+ * 从 Connected 执行 OpenDevice → Open。已为 Open 则直接返回。
+ * 取流（Grabbing）下禁止调用：须先 stopDevice，再由 openDeviceForParameters 走本路径。
  *
- * - 已为 Open：直接返回。
- * - Connected：调用 SDK 打开设备。
- * - Grabbing：先 StopGrabbing，再保持为 Open，便于后续设置参数等流程。
- *
- * @throws std::runtime_error SDK 返回非 MV_CODEREADER_OK 时抛出，错误信息含十六进制错误码。
+ * @throws std::logic_error 当前为 Grabbing
+ * @throws std::runtime_error OpenDevice 失败
  */
 void CodeReader::open() {
     if (this->status == CodeReaderStatus::Open) {
         return;
     }
+    if (this->status == CodeReaderStatus::Grabbing) {
+        throw std::logic_error(
+            "CodeReader::open：当前为取流状态，禁止隐式停流；请先 stopDevice，再调用 openDeviceForParameters");
+    }
     if (this->status == CodeReaderStatus::Connected) {
         int sdkOk = MV_CODEREADER_OpenDevice(this->handle);
         if (sdkOk != MV_CODEREADER_OK) {
             throw std::runtime_error("MV_CODEREADER_OpenDevice error: " + toHexStr(sdkOk));
-        }
-        this->status = CodeReaderStatus::Open;
-        return;
-    }
-    if (this->status == CodeReaderStatus::Grabbing) {
-        int sdkOk = MV_CODEREADER_StopGrabbing(this->handle);
-        if (sdkOk != MV_CODEREADER_OK) {
-            throw std::runtime_error("MV_CODEREADER_StopGrabbing error: " + toHexStr(sdkOk));
         }
         this->status = CodeReaderStatus::Open;
     }
