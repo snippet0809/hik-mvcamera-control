@@ -124,7 +124,8 @@ import "github.com/you/hik-mvcamera-control/ffi/go/hikcr"
 | Workflow | 说明 |
 |----------|------|
 | **CI**（`.github/workflows/ci.yml`） | `pull_request` / 推送到 `main`、`master`：Windows 上构建 DLL、**wheel**，并做 **Go**（`gofmt`、`go mod tidy`、可选 `go build`）校验（不落库、不上传产物）。 |
-| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件、**gh-pages**（pip 用 PEP 503）、自动 **`ffi/go/v*`** 标签。 |
+| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）、自动 **`ffi/go/v*`** 标签。 |
+| **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`**（或落地页脚本）时：只重部署 **根 `index.html`**，`keep_files` 保留已有 **`simple/`**，与发版解耦。 |
 
 ## 仓库结构
 

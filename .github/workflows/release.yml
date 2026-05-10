@@ -149,7 +149,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           WHEEL_FILENAME: ${{ needs.build-windows.outputs.wheel_name }}
           PEP503_PROJECT: hik-code-reader
-        run: python .github/scripts/gen_pep503_simple.py
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "markdown>=3.5"
+          python .github/scripts/gen_pep503_simple.py
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
