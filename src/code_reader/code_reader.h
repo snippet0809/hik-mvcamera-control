@@ -27,6 +27,15 @@ struct CodeReaderInfo {
 };
 
 /**
+ * 枚举型 GenICam 节点读取结果（对应 MV_CODEREADER_GetEnumValue 填充的 MV_CODEREADER_ENUMVALUE）。
+ * symbolic 名称需通过设备 XML / MVS 等另行对照整数值。
+ */
+struct CodeReaderEnumValue {
+    unsigned int curValue;                 ///< 当前枚举整型值（nCurValue）
+    std::vector<unsigned int> supportedValues; ///< 设备支持的取值列表（nSupportValue 前 nSupportedNum 个）
+};
+
+/**
  * 单台读码器的包装：持有 SDK 句柄，并提供 open / close / startGrabbing 状态迁移。
  * 实例由 getDevice 缓存在全局 map 中；返回的裸指针在 destroyDevice / setIp 等之后可能失效，勿长期保存。
  */
@@ -87,6 +96,20 @@ void setIntValue(const std::string &sn, const std::string &key, int value);
 void setStringValue(const std::string &sn, const std::string &key, const std::string &value);
 void setBoolValue(const std::string &sn, const std::string &key, bool value);
 void setFloatValue(const std::string &sn, const std::string &key, float value);
+
+/**
+ * 读取枚举型参数（MV_CODEREADER_GetEnumValue）。
+ * @note 设备须处于已打开且未取流（实现中通过 open() 保证）；与 set*Value 一致。
+ */
+CodeReaderEnumValue getEnumValue(const std::string &sn, const std::string &key);
+
+/** 按整型值设置枚举节点（MV_CODEREADER_SetEnumValue）。 */
+void setEnumValue(const std::string &sn, const std::string &key, unsigned int value);
+
+/**
+ * 按符号名设置枚举节点（MV_CODEREADER_SetEnumValueByString），如 "On"、"Off"、"Software" 等，以设备 XML 为准。
+ */
+void setEnumValueByString(const std::string &sn, const std::string &key, const std::string &symbolic);
 
 /** 将无符号错误码格式化为 0xXXXXXXXX 十六进制字符串（用于异常信息）。 */
 inline std::string toHexStr(std::uint32_t value) {

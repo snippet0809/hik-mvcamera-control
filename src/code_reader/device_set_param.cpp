@@ -1,6 +1,6 @@
 /**
  * @file device_set_param.cpp
- * @brief 读码器网络与 GenICam 风格参数设置（GigE 改 IP、SetInt/Float/Bool/String 等）。
+ * @brief 读码器网络与 GenICam 风格参数设置（GigE 改 IP、整型/浮点/布尔/字符串/枚举等）。
  */
 
 #include "MvCodeReaderCtrl.h"
@@ -70,5 +70,35 @@ void setBoolValue(const std::string &sn, const std::string &key, bool value) {
 void setStringValue(const std::string &sn, const std::string &key, const std::string &value) {
     setParamOpened(sn, "MV_CODEREADER_SetStringValue", [&](void *h) {
         return MV_CODEREADER_SetStringValue(h, key.c_str(), value.c_str());
+    });
+}
+
+CodeReaderEnumValue getEnumValue(const std::string &sn, const std::string &key) {
+    CodeReader *device = getDevice(sn, true);
+    device->open();
+    MV_CODEREADER_ENUMVALUE ev{};
+    int ok = MV_CODEREADER_GetEnumValue(device->handle, key.c_str(), &ev);
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error("MV_CODEREADER_GetEnumValue error: " + toHexStr(ok));
+    }
+    CodeReaderEnumValue out;
+    out.curValue = ev.nCurValue;
+    unsigned int n = ev.nSupportedNum;
+    if (n > MV_CODEREADER_MAX_XML_SYMBOLIC_NUM) {
+        n = MV_CODEREADER_MAX_XML_SYMBOLIC_NUM;
+    }
+    out.supportedValues.assign(ev.nSupportValue, ev.nSupportValue + n);
+    return out;
+}
+
+void setEnumValue(const std::string &sn, const std::string &key, unsigned int value) {
+    setParamOpened(sn, "MV_CODEREADER_SetEnumValue", [&](void *h) {
+        return MV_CODEREADER_SetEnumValue(h, key.c_str(), value);
+    });
+}
+
+void setEnumValueByString(const std::string &sn, const std::string &key, const std::string &symbolic) {
+    setParamOpened(sn, "MV_CODEREADER_SetEnumValueByString", [&](void *h) {
+        return MV_CODEREADER_SetEnumValueByString(h, key.c_str(), symbolic.c_str());
     });
 }
