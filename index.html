@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="hik-mvcamera-control — 项目说明与 pip 安装索引" />
+  <title>hik-mvcamera-control · 项目文档</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #ffffff;
+      --text: #1f2328;
+      --muted: #59636e;
+      --border: #d1d9e0;
+      --accent: #0969da;
+      --code-bg: #f0f3f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .site-header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+    }
+    .site-header-inner {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    .site-header h1 {
+      margin: 0 0 0.35rem 0;
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .site-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .nav {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+    }
+    .nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .nav a:hover { text-decoration: underline; }
+    .badge {
+      display: inline-block;
+      margin-left: 0.5rem;
+      padding: 0.1rem 0.45rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      vertical-align: middle;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 1.75rem 1.25rem 3rem;
+    }
+    .markdown-body {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.75rem 2rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .markdown-body h1 { font-size: 1.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    .markdown-body h2 { font-size: 1.35rem; margin-top: 1.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+    .markdown-body h3 { font-size: 1.12rem; margin-top: 1.25rem; }
+    .markdown-body a { color: var(--accent); text-decoration: none; }
+    .markdown-body a:hover { text-decoration: underline; }
+    .markdown-body code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+    .markdown-body pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      overflow: auto;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .markdown-body pre code { background: none; padding: 0; font-size: inherit; }
+    .markdown-body table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+    }
+    .markdown-body th, .markdown-body td {
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.65rem;
+    }
+    .markdown-body th { background: var(--code-bg); text-align: left; }
+    .markdown-body ul, .markdown-body ol { padding-left: 1.5rem; }
+    .markdown-body blockquote {
+      margin: 1rem 0;
+      padding: 0 1rem;
+      color: var(--muted);
+      border-left: 4px solid var(--border);
+    }
+    .site-footer {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 1.25rem 2rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    .site-footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <h1>hik-mvcamera-control<span class="badge">main</span></h1>
+      <p>本页随 README 更新；pip 索引（PEP 503）在每次发版时更新，与发版流程独立。</p>
+      <nav class="nav" aria-label="站点导航">
+        <a href="simple/hik-code-reader/">pip 索引（PEP 503）· hik-code-reader</a>
+        <a href="https://github.com/snippet0809/hik-mvcamera-control">GitHub 仓库</a>
+        <a href="https://github.com/snippet0809/hik-mvcamera-control/releases">Releases</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <article class="markdown-body">
+<h1>hik-mvcamera-control</h1>
+<p>围绕海康机器人 <strong>机器视觉 SDK</strong> 的本地封装与工程骨架：仓库中已包含 <strong>读码器（MvCodeReader）</strong> 的头文件与静态库，当前 <code>src</code> 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 <strong>稳定 C ABI</strong>（<code>include/hik_code_reader/c_api.h</code> + <code>c_api.cpp</code>），便于 <strong>Python（ctypes）</strong> 与 <strong>Go（cgo）</strong> 等语言加载 <code>hik_code_reader</code> 共享库调用。<code>include/lib</code> 下同时提供了 <strong>工业相机（MvCamera）</strong> 相关 SDK 文件，便于后续扩展相机侧逻辑。</p>
+<h2>功能概览（读码器 C++ 封装）</h2>
+<ul>
+<li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号与 GigE 导出 IP 等信息（见 <code>src/code_reader/device_info.cpp</code>）。</li>
+<li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、注册图像回调、起停取流等；按序列号操作）。</li>
+<li><strong>读码回调</strong>：<code>registerImageCallback</code>（BCR 结果列表）；<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
+<li><strong>改参前置</strong>：<code>openDeviceForParameters</code> 将设备置为 <strong>Open</strong>（已 OpenDevice、未取流）。正在取流时须先 <code>stopDevice</code>，否则会抛 <code>std::logic_error</code>。</li>
+<li><strong>GigE 网络</strong>：<code>setIp</code> 改 IP/掩码/网关（与 GenICam 写参不同类；成功后常 <code>destroyDevice</code> 释放本地缓存）。</li>
+<li><strong>GenICam 写参</strong>：<code>setIntValue</code> / <code>setFloatValue</code> / <code>setBoolValue</code> / <code>setStringValue</code> / <code>setEnumValue</code> / <code>setEnumValueByString</code>（均须先处于 Open，约定同 <code>openDeviceForParameters</code>）。</li>
+<li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>ffi/go</code></strong>。</li>
+</ul>
+<h2>在 GitHub 上托管分发（维护者）</h2>
+<p>GitHub Packages <strong>没有</strong>与 PyPI 对等的 Python 包仓，也<strong>没有</strong>替代 <code>go get</code> 的独立 Go Registry。本仓库采用 <strong>「Releases + GitHub Pages（PEP 503）+ Git 标签」</strong>，全部留在 GitHub 上完成托管。</p>
+<h3>原理简述</h3>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>托管位置</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python wheel</td>
+<td><strong>GitHub Releases</strong> 附件</td>
+<td>真实安装包；<code>pip</code> 最终下载的文件</td>
+</tr>
+<tr>
+<td><code>pip search</code> 式索引</td>
+<td><strong>GitHub Pages</strong>（<code>gh-pages</code> 分支的 <code>simple/</code>）</td>
+<td>符合 <strong>PEP 503</strong>，让开发者能用 <code>pip install 包名==版本 --index-url ...</code></td>
+</tr>
+<tr>
+<td>Go 源码模块</td>
+<td><strong>本仓库 Git</strong> + 标签 <strong><code>ffi/go/vX.Y.Z</code></strong></td>
+<td><code>go get</code> 经官方模块代理从 GitHub 拉取</td>
+</tr>
+</tbody>
+</table>
+<h3>维护者一次性配置</h3>
+<ol>
+<li>保证 <strong><code>ffi/go/go.mod</code></strong> 第一行与你的 GitHub 路径一致，例如仓库 <code>https://github.com/you/hik-mvcamera-control</code> 时应为：<br />
+<code>module github.com/you/hik-mvcamera-control/ffi/go</code><br />
+   （本仓库示例为 <code>github.com/snipp/hik-mvcamera-control/ffi/go</code>，若你的用户名或组织不同，请改这一行并提交。）</li>
+<li>在 GitHub 打开本仓库：<strong>Settings → Pages</strong>  </li>
+<li><strong>Build and deployment</strong>：Source 选 <strong>Deploy from a branch</strong>  </li>
+<li>Branch 选 <strong><code>gh-pages</code></strong>，文件夹选 <strong><code>/(root)</code></strong>  </li>
+<li>保存。首次需等 <strong><code>release.yml</code> 成功跑过一次</strong> 后才有 <code>gh-pages</code> 分支。</li>
+</ol>
+<h3>维护者发版步骤</h3>
+<ol>
+<li>在默认分支上确认代码与 <code>python/pyproject.toml</code> 已就绪。  </li>
+<li>创建并推送 <strong>语义化标签</strong>（必须以 <code>v</code> 开头）：<br />
+<code>git tag v0.1.0 &amp;&amp; git push origin v0.1.0</code>  </li>
+<li><strong>GitHub Actions</strong> 中 <strong><code>Release</code></strong> 工作流（<code>release.yml</code>）会自动：  </li>
+<li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.1.0</code> → <code>0.1.0</code>），再构建 <strong>Windows x64 wheel</strong>（内含 <code>hik_code_reader.dll</code>）；  </li>
+<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、Go/cgo 用 zip、<code>dll</code>、<code>lib</code>；  </li>
+<li>生成 <strong>PEP 503</strong> 页面并推送到 <strong><code>gh-pages</code></strong>（与已有索引合并，保留历史版本链接）；  </li>
+<li>在同一提交上自动创建 <strong><code>ffi/go/v0.1.0</code></strong> 标签（若不存在），供 <code>go get</code> 使用。</li>
+</ol>
+<h3>发版后维护者自检</h3>
+<ul>
+<li><strong>Releases</strong> 页面是否出现新版本，且附件中有 <code>.whl</code>。  </li>
+<li><strong>Actions</strong> 里 <code>Release</code> 是否全部绿色。  </li>
+<li><strong>Settings → Pages</strong> 是否显示站点地址（约 <code>https://&lt;用户&gt;.github.io/&lt;仓库名&gt;/</code>）。  </li>
+<li>浏览器打开 <code>https://&lt;用户&gt;.github.io/&lt;仓库名&gt;/simple/hik-code-reader/</code>，应能看到指向 Release 的链接。</li>
+</ul>
+<hr />
+<h2>开发者使用指南</h2>
+<p>以下假设仓库为 <code>github.com/you/hik-mvcamera-control</code>，请把 <code>you</code> / 仓库名换成实际路径。</p>
+<h3>Python 开发者</h3>
+<p><strong>环境</strong>：当前 wheel 为 <strong>Windows x64</strong>，需在对应环境安装。</p>
+<p><strong>方式 A（推荐，像用「私有 PyPI 源」一样）</strong><br />
+在维护者已开启 <strong>Pages</strong> 且发过版的前提下：</p>
+<pre><code class="language-bash">pip install &quot;hik-code-reader==0.1.0&quot; \
+  --index-url &quot;https://you.github.io/hik-mvcamera-control/simple/&quot; \
+  --trusted-host &quot;you.github.io&quot;
+</code></pre>
+<ul>
+<li>版本号 <strong><code>0.1.0</code></strong> 与 Git 标签 <strong><code>v0.1.0</code></strong> 对应（无 <code>v</code>）。  </li>
+<li><code>--trusted-host</code> 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。</li>
+</ul>
+<p><strong>方式 B（不依赖 Pages，直链 wheel）</strong><br />
+在 <strong>Releases</strong> 中复制对应版本的 <code>.whl</code> 下载地址：</p>
+<pre><code class="language-bash">pip install &quot;https://github.com/you/hik-mvcamera-control/releases/download/v0.1.0/hik_code_reader-0.1.0-py3-none-win_amd64.whl&quot;
+</code></pre>
+<p>（文件名随版本变化，以 Release 页为准。）</p>
+<p><strong>代码示例</strong>：</p>
+<pre><code class="language-python">from hik_code_reader import HikCodeReader
+
+cr = HikCodeReader()  # wheel 内已带 DLL，一般无需设 HIK_CODE_READER_DLL
+print(cr.enum_devices())
+</code></pre>
+<h3>Go 开发者</h3>
+<p><strong>模块路径</strong>（须与仓库 <code>go.mod</code> 一致）：</p>
+<pre><code class="language-text">github.com/you/hik-mvcamera-control/ffi/go
+</code></pre>
+<p><strong>安装指定版本</strong>（与已发布的 <strong><code>vX.Y.Z</code></strong> / 自动打的 <strong><code>ffi/go/vX.Y.Z</code></strong> 一致）：</p>
+<pre><code class="language-bash">go get github.com/you/hik-mvcamera-control/ffi/go@v0.1.0
+</code></pre>
+<p><strong>代码中导入</strong>：</p>
+<pre><code class="language-go">import &quot;github.com/you/hik-mvcamera-control/ffi/go/hikcr&quot;
+</code></pre>
+<p><strong>说明</strong>：</p>
+<ul>
+<li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（Windows 上通常为 MSVC 与 Release 里的 <code>.lib</code> / 运行时 <code>dll</code>）；<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
+<li><strong>私有仓库</strong>：<br />
+<code>go env -w GOPRIVATE=github.com/you/*</code><br />
+  必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
+</ul>
+<h2>GitHub Actions 摘要</h2>
+<table>
+<thead>
+<tr>
+<th>Workflow</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CI</strong>（<code>.github/workflows/ci.yml</code>）</td>
+<td><code>pull_request</code> / 推送到 <code>main</code>、<code>master</code>：Windows 上构建 DLL、<strong>wheel</strong>，并做 <strong>Go</strong>（<code>gofmt</code>、<code>go mod tidy</code>、可选 <code>go build</code>）校验（不落库、不上传产物）。</td>
+</tr>
+<tr>
+<td><strong>Release</strong>（<code>.github/workflows/release.yml</code>）</td>
+<td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）、自动 <strong><code>ffi/go/v*</code></strong> 标签。</td>
+</tr>
+<tr>
+<td><strong>Pages (README)</strong>（<code>.github/workflows/pages-readme.yml</code>）</td>
+<td>推送到 <code>main</code>/<code>master</code> 且变更 <strong><code>README.md</code></strong>（或落地页脚本）时：只重部署 <strong>根 <code>index.html</code></strong>，<code>keep_files</code> 保留已有 <strong><code>simple/</code></strong>，与发版解耦。</td>
+</tr>
+</tbody>
+</table>
+<h2>仓库结构</h2>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/code_reader/</code></td>
+<td>读码器 C++ 封装实现（<code>code_reader.h</code>、<code>c_api.cpp</code> 等）</td>
+</tr>
+<tr>
+<td><code>include/hik_code_reader/</code></td>
+<td><strong>C ABI 头文件</strong>（<code>c_api.h</code>），供 Python/Go 等包含</td>
+</tr>
+<tr>
+<td><code>python/</code></td>
+<td><strong><code>hik-code-reader</code></strong> 包与 <code>pyproject.toml</code>（wheel 内含 <code>_native/hik_code_reader.dll</code>）</td>
+</tr>
+<tr>
+<td><code>ffi/python/</code></td>
+<td>ctypes 参考实现（与 <code>python/hik_code_reader</code> 保持同步为佳）</td>
+</tr>
+<tr>
+<td><code>ffi/go/</code></td>
+<td>Go 子模块（<code>go.mod</code>）；包目录 <code>hikcr</code></td>
+</tr>
+<tr>
+<td><code>include/MvCamera/</code>、<code>include/MvCodeReader/</code></td>
+<td>海康 SDK 头文件</td>
+</tr>
+<tr>
+<td><code>lib/MvCamera/{win32,win64}/</code>、<code>lib/MvCodeReader/{win32,win64}/</code></td>
+<td>预置静态库（含 <code>turbojpeg</code> 等读码器依赖）</td>
+</tr>
+<tr>
+<td><code>tests/</code></td>
+<td>GTest 用例（需连接真实设备时谨慎运行）</td>
+</tr>
+<tr>
+<td><code>.docs/</code></td>
+<td>本地文档（如读码器开发指南 CHM）</td>
+</tr>
+</tbody>
+</table>
+<h2>构建要求</h2>
+<ul>
+<li><strong>CMake</strong> 4.0 及以上（见根目录 <code>CMakeLists.txt</code>）。</li>
+<li>支持 C++17 或项目所用特性的 <strong>MSVC</strong>（当前工程通过 <code>FetchContent</code> 拉取 <strong>GoogleTest</strong> 与 <strong>{fmt}</strong>）。</li>
+<li><strong>Windows</strong>：默认链接 <code>lib/MvCodeReader/win64/MvCodeReaderCtrl.lib</code>；若在 32 位环境构建，需自行将 CMake 中的库路径改为 <code>win32</code> 对应文件。</li>
+</ul>
+<h2>构建与测试</h2>
+<pre><code class="language-powershell">cmake -S . -B build -G &quot;Visual Studio 17 2022&quot; -A x64
+cmake --build build --config Release
+ctest --test-dir build -C Release
+</code></pre>
+<p>首次配置会从网络下载 GTest 与 fmt；需保证构建环境可访问 GitHub。</p>
+<p>产物说明：</p>
+<ul>
+<li><strong><code>hik_code_reader_static.lib</code></strong>：静态库，供 <code>all_tests</code> 等链接。</li>
+<li><strong><code>hik_code_reader.dll</code></strong>：共享库（目标名 <code>hik_code_reader_shared</code>），导出 <code>hik_cr_*</code> 供 FFI。Python 可将环境变量 <strong><code>HIK_CODE_READER_DLL</code></strong> 设为该 DLL 的完整路径，或把 DLL 放到进程当前目录 / <code>PATH</code>。</li>
+<li><strong>发版产物</strong>：见上文 <strong>Release / gh-pages</strong>。</li>
+</ul>
+<h2>运行与部署说明</h2>
+<ol>
+<li>在目标机器安装海康读码器/视觉设备所需 <strong>驱动与运行库</strong>（版本需与 SDK 匹配）。</li>
+<li>GigE 设备注意网卡、防火墙与网段；改 IP 前须 <code>openDeviceForParameters</code> 使设备处于 <strong>Open</strong>，并阅读 <code>setIp</code> 注释（改 IP 后设备常重启，本地句柄会被移除）。</li>
+<li>将 SDK 提供的 <strong>DLL</strong>（若静态链仍依赖运行时）放在可执行文件同目录或系统 <code>PATH</code> 中，按官方文档为准。</li>
+</ol>
+<h2>许可证与第三方</h2>
+<p>海康威视 <strong>MvCamera / MvCodeReader</strong> SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest、{fmt} 遵循各自开源协议（由 CMake <code>FetchContent</code> 获取）。</p>
+<h2>相关文档</h2>
+<ul>
+<li>读码器开发说明可参考仓库内 <code>.docs</code> 下文档及 <code>include/MvCodeReader</code> 头文件中的 API 定义。</li>
+</ul>
+    </article>
+  </main>
+  <footer class="site-footer">
+    <p>仓库：<a href="https://github.com/snippet0809/hik-mvcamera-control">snippet0809/hik-mvcamera-control</a> · 仅作说明展示，安装请以 Releases / pip 为准。</p>
+  </footer>
+</body>
+</html>
