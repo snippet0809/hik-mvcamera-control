@@ -1,57 +1,89 @@
 #pragma once
 
+/**
+ * @file code_reader.h
+ * @brief 海康读码器 SDK 的 C++ 封装：设备枚举、句柄生命周期、取流与参数设置等对外接口。
+ * @note 实现分散在 device_info / device_control / device_set_param / device_trigger 等 .cpp 中。
+ */
+
+#include <cstdint>
 #include <functional>
+#include <istream>
 #include <sstream>
 #include <string>
 #include <vector>
 
+/** 读码器在本封装内的运行状态（与 SDK Open / 取流步骤对应）。 */
 enum class CodeReaderStatus {
-    Connected,
-    Open,
-    Grabbing
+    Connected, ///< 已创建句柄，尚未 OpenDevice
+    Open,      ///< 已 OpenDevice，未取流（适合部分参数设置）
+    Grabbing   ///< 正在 StartGrabbing 取流
 };
 
+/** 枚举单台在线设备时返回的摘要信息（GigE）。 */
 struct CodeReaderInfo {
-    std::string serialNumber;
-    std::string netExportIp;
+    std::string serialNumber; ///< 设备序列号
+    std::string netExportIp;  ///< GigE：SDK 中与通信相关的主机网口 IP 的字符串形式（见实现注释）
 };
 
+/**
+ * 单台读码器的包装：持有 SDK 句柄，并提供 open / close / startGrabbing 状态迁移。
+ * 实例由 getDevice 缓存在全局 map 中；返回的裸指针在 destroyDevice / setIp 等之后可能失效，勿长期保存。
+ */
 class CodeReader {
 public:
     std::string serialNumber;
-    void *handle;
+    void *handle; ///< MV_CODEREADER_* 使用的设备句柄
     CodeReaderStatus status;
 
-    CodeReader(std::string sn);
+    explicit CodeReader(const std::string &serialNumber);
     ~CodeReader();
 
-    void open();
-    void grabbing();
-    void close();
+    void open();         ///< 打开设备（未取流）
+    void startGrabbing(); ///< 开始取流
+    void close();        ///< 停流（若需要）并关闭设备
 };
 
+/** 枚举当前可读码器设备列表（内部调用 MV_CODEREADER_EnumCodeReader）。 */
 std::vector<CodeReaderInfo> enumDevice();
-CodeReader *getDevice(std::string sn, bool createIfNotExist);
-void destroyDevice(std::string sn);
 
-void startDevice(std::string sn);
-void stopDevice(std::string sn);
+/**
+ * 按序列号获取或创建读码器实例（缓存在进程内全局 map）。
+ *
+ * @note 返回的裸指针在 destroyDevice / setIp 等之后可能失效；多线程下由调用方自行同步。
+ */
+CodeReader *getDevice(const std::string &sn, bool createIfNotExist);
 
-void registerImageCallback(std::function<void(std::vector<std::string> codeArr)> callback);
-void triggerDevice(std::string sn);
+void destroyDevice(const std::string &sn);
 
-void setIp(std::string sn, std::string ip, std::string mask, std::string gateway);
-void setIntValue(std::string sn, std::string key, int value);
-void setStringValue(std::string sn, std::string key, std::string value);
-void setBoolValue(std::string sn, std::string key, bool value);
-void setFloatValue(std::string sn, std::string key, float value);
+void startDevice(const std::string &sn);
 
-inline std::string toHexStr(int value) {
+void stopDevice(const std::string &sn);
+
+void registerImageCallback(const std::function<void(std::vector<std::string> codeArr)> &callback);
+
+void triggerDevice(const std::string &sn);
+
+void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway);
+
+void setIntValue(const std::string &sn, const std::string &key, int value);
+void setStringValue(const std::string &sn, const std::string &key, const std::string &value);
+void setBoolValue(const std::string &sn, const std::string &key, bool value);
+void setFloatValue(const std::string &sn, const std::string &key, float value);
+
+/** 将无符号错误码格式化为 0xXXXXXXXX 十六进制字符串（用于异常信息）。 */
+inline std::string toHexStr(std::uint32_t value) {
     std::stringstream ss;
     ss << "0x" << std::hex << std::uppercase << value;
     return ss.str();
 }
 
+/** 将 SDK 返回的 int 错误码格式化为十六进制字符串（按无符号位模式显示）。 */
+inline std::string toHexStr(int value) {
+    return toHexStr(static_cast<std::uint32_t>(value));
+}
+
+/** 将 32 位 IPv4（主机字节序）格式化为点分十进制。 */
 inline std::string intToIp(unsigned int ip) {
     std::stringstream ss;
     ss << ((ip >> 24) & 0xFF) << "."
@@ -61,12 +93,36 @@ inline std::string intToIp(unsigned int ip) {
     return ss.str();
 }
 
-inline unsigned int ipToInt(const std::string &ip) {
-    std::vector<int> octets(4);
-    char dot;
+/**
+ * 解析点分十进制 IPv4 为主机字节序 32 位整数。
+ * @return 成功返回 true 并写入 out；格式非法、段超出 0–255 或存在多余字符时返回 false（out 不修改）。
+ */
+inline bool tryParseIpv4HostOrder(const std::string &ip, unsigned int &out) {
+    int octets[4] = {};
+    char dot = 0;
     std::istringstream iss(ip);
-    if (iss >> octets[0] >> dot >> octets[1] >> dot >> octets[2] >> dot >> octets[3]) {
-        return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+    if (!(iss >> octets[0] >> dot) || dot != '.') {
+        return false;
     }
-    return 0;
+    if (!(iss >> octets[1] >> dot) || dot != '.') {
+        return false;
+    }
+    if (!(iss >> octets[2] >> dot) || dot != '.') {
+        return false;
+    }
+    if (!(iss >> octets[3])) {
+        return false;
+    }
+    iss >> std::ws;
+    if (!iss.eof()) {
+        return false;
+    }
+    for (int o : octets) {
+        if (o < 0 || o > 255) {
+            return false;
+        }
+    }
+    out = (static_cast<unsigned int>(octets[0]) << 24) | (static_cast<unsigned int>(octets[1]) << 16) |
+          (static_cast<unsigned int>(octets[2]) << 8) | static_cast<unsigned int>(octets[3]);
+    return true;
 }

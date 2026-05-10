@@ -1,46 +1,85 @@
-// 设备枚举与句柄管理：在线设备列表、按序列号创建/缓存/销毁 CodeReader（SDK 句柄）。
+/**
+ * @file device_info.cpp
+ * @brief 设备枚举与句柄管理：在线列表、按序列号创建/缓存/销毁 CodeReader（SDK 句柄）。
+ * @note 状态迁移（open/close/startGrabbing）见 device_control.cpp。
+ */
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
+#include <cstddef>
 #include <stdexcept>
 #include <unordered_map>
 
-// 已创建的读码器实例，键为设备序列号；erase 时会析构 CodeReader 并销毁 SDK 句柄。
 std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
-CodeReader::CodeReader(std::string sn) {
-    // 仅创建句柄，状态为 Connected；打开设备、取流见 open / grabbing。
-    int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, sn.c_str());
+namespace {
+
+std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
+    std::size_t n = 0;
+    while (n < len && buf[n] != '\0') {
+        ++n;
+    }
+    return std::string(reinterpret_cast<const char *>(buf), n);
+}
+
+} // namespace
+
+/**
+ * 按序列号创建 SDK 句柄，状态为 Connected（尚未 OpenDevice）。
+ *
+ * @param serialNumber 设备序列号
+ * @throws std::runtime_error MV_CODEREADER_CreateHandleBySerialNumber 失败时抛出
+ */
+CodeReader::CodeReader(const std::string &serialNumber)
+    : serialNumber(serialNumber), handle(nullptr), status(CodeReaderStatus::Connected) {
+    int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, this->serialNumber.c_str());
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
     }
-    this->serialNumber = sn;
-    this->status = CodeReaderStatus::Connected;
 }
 
 CodeReader::~CodeReader() {
-    MV_CODEREADER_DestroyHandle(this->handle);
+    if (handle == nullptr) {
+        return;
+    }
+    int destroyRet = MV_CODEREADER_DestroyHandle(handle);
+    (void)destroyRet;
 }
 
+/**
+ * 枚举在线读码器，填充序列号与 GigE 相关摘要。
+ *
+ * @return 设备信息列表（仅包含传输层为 GigE 的项；其余类型跳过）。
+ * @throws std::runtime_error MV_CODEREADER_EnumCodeReader 失败时抛出
+ */
 std::vector<CodeReaderInfo> enumDevice() {
     MV_CODEREADER_DEVICE_INFO_LIST stDevList{};
-    // 枚举指定系列读码器（虚拟相机可枚举；私有协议设备见 MV_CODEREADER_EnumIDDevices）。
     int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_EnumCodeReader error: " + toHexStr(ok));
     }
     std::vector<CodeReaderInfo> infos;
     for (unsigned int i = 0; i < stDevList.nDeviceNum; i++) {
-        // 当前仅读取 GigE 分支字段；USB 等设备需按 nTLayerType 解析 SpecialInfo。
-        std::string sn = (char *)stDevList.pDeviceInfo[i]->SpecialInfo.stGigEInfo.chSerialNumber;
-        // nNetExport：SDK 注释为与设备通信所使用的主机网口 IP（主机字节序由 intToIp 格式化）。
-        std::string netExportIp = intToIp(stDevList.pDeviceInfo[i]->SpecialInfo.stGigEInfo.nNetExport);
+        MV_CODEREADER_DEVICE_INFO *pinfo = stDevList.pDeviceInfo[i];
+        if (pinfo == nullptr) {
+            continue;
+        }
+        if (pinfo->nTLayerType != MV_CODEREADER_GIGE_DEVICE) {
+            continue;
+        }
+        const MV_CODEREADER_GIGE_DEVICE_INFO &gige = pinfo->SpecialInfo.stGigEInfo;
+        std::string sn = gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber));
+        std::string netExportIp = intToIp(gige.nNetExport);
         infos.push_back({sn, netExportIp});
     }
     return infos;
 }
 
-CodeReader *getDevice(std::string sn, bool createIfNotExist) {
+/**
+ * 按序列号查找或创建实例。
+ * @return createIfNotExist 为 false 且不存在时返回 nullptr
+ */
+CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
     auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
         return it->second.get();
@@ -53,7 +92,6 @@ CodeReader *getDevice(std::string sn, bool createIfNotExist) {
     return nullptr;
 }
 
-void destroyDevice(std::string sn) {
-    // 从缓存移除并析构实例，内部 ~CodeReader 会调用 MV_CODEREADER_DestroyHandle。
+void destroyDevice(const std::string &sn) {
     deviceMap.erase(sn);
 }
