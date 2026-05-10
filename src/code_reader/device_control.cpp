@@ -85,6 +85,8 @@ void CodeReader::startGrabbing() {
         this->status = CodeReaderStatus::Open;
     }
     if (this->status == CodeReaderStatus::Open) {
+        // SDK 要求：RegisterImageCallBack 须在 StartGrabbing 之前；此处绑定集成方 registerImageCallback 中的逻辑
+        codeReaderInternalBindImageCallbackBeforeGrabbing(this);
         int sdkOk = MV_CODEREADER_StartGrabbing(this->handle);
         if (sdkOk != MV_CODEREADER_OK) {
             throw std::runtime_error("MV_CODEREADER_StartGrabbing error: " + toHexStr(sdkOk));

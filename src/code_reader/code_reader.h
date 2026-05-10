@@ -60,8 +60,25 @@ void startDevice(const std::string &sn);
 
 void stopDevice(const std::string &sn);
 
+/**
+ * 注册读码结果回调（内部对应 MV_CODEREADER_RegisterImageCallBack，在 StartGrabbing 前绑定到设备）。
+ *
+ * 当一帧中识别到条码且结果类型为 BCR 时，在 SDK 内部线程调用 callback，传入本帧解码得到的字符串列表（按 nCodeNum 顺序）。
+ * 传空 std::function（默认构造）表示取消回调，下次 startDevice 时向 SDK 注册 nullptr。
+ *
+ * @note 通常在 startDevice 之前调用，以保证首次取流即生效；若设备已在取流中修改回调，需 stopDevice 后再次 startDevice。
+ * @note 回调在 SDK 线程执行，避免在回调内长时间阻塞或调用可能导致与本 SDK 死锁的接口。
+ */
 void registerImageCallback(const std::function<void(std::vector<std::string> codeArr)> &callback);
 
+/**
+ * 软触发一次（MV_CODEREADER_SetCommandValue，命令节点 TriggerSoftware）。
+ *
+ * @pre 设备必须已处于本封装内的取流状态（CodeReaderStatus::Grabbing），即已成功 startDevice 且未 stopDevice/close 到非取流。
+ * @note 另需在设备上配置软触发相关参数（如 TriggerMode On、TriggerSource Software，以设备 XML 为准）。
+ * @throws std::logic_error 非取流状态或设备未缓存时
+ * @throws std::runtime_error SDK 调用失败
+ */
 void triggerDevice(const std::string &sn);
 
 void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway);
@@ -126,3 +143,10 @@ inline bool tryParseIpv4HostOrder(const std::string &ip, unsigned int &out) {
           (static_cast<unsigned int>(octets[2]) << 8) | static_cast<unsigned int>(octets[3]);
     return true;
 }
+
+/**
+ * @internal
+ * @brief 取流前把 registerImageCallback 登记的内容注册到海康 SDK（MV_CODEREADER_RegisterImageCallBack）。
+ * @note 由 CodeReader::startGrabbing 在调用 MV_CODEREADER_StartGrabbing 之前调用；勿作为稳定对外 ABI 依赖。
+ */
+void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
