@@ -10,39 +10,39 @@
 
 namespace {
 
-void checkSdkOk(int ok, const char *apiName) {
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error(std::string(apiName) + " error: " + toHexStr(ok));
+    void checkSdkOk(int ok, const char *apiName) {
+        if (ok != MV_CODEREADER_OK) {
+            throw std::runtime_error(std::string(apiName) + " error: " + toHexStr(ok));
+        }
     }
-}
 
-/**
- * 参数设置要求设备处于 Open（已 OpenDevice、未取流）。
- * 未缓存 / Connected / Grabbing 均抛 std::logic_error，提示调用方先 openDeviceForParameters 或 stopDevice。
- */
-CodeReader *requireOpenForParameter(const std::string &sn, const char *caller) {
-    CodeReader *d = getDevice(sn, false);
-    if (d == nullptr) {
-        throw std::logic_error(std::string(caller) +
-                               "：设备未在会话中，请先调用 openDeviceForParameters（需已枚举到该序列号）");
+    /**
+     * 参数设置要求设备处于 Open（已 OpenDevice、未取流）。
+     * 未缓存 / Connected / Grabbing 均抛 std::logic_error，提示调用方先 openDeviceForParameters 或 stopDevice。
+     */
+    CodeReader *requireOpenForParameter(const std::string &sn, const char *caller) {
+        CodeReader *d = getDevice(sn, false);
+        if (d == nullptr) {
+            throw std::logic_error(std::string(caller) +
+                                   "：设备未在会话中，请先调用 openDeviceForParameters（需已枚举到该序列号）");
+        }
+        if (d->status == CodeReaderStatus::Grabbing) {
+            throw std::logic_error(std::string(caller) +
+                                   "：当前为取流状态，无法设置参数；请先 stopDevice，再调用 openDeviceForParameters");
+        }
+        if (d->status == CodeReaderStatus::Connected) {
+            throw std::logic_error(
+                std::string(caller) + "：设备尚未打开；请先调用 openDeviceForParameters 进入 Open 状态后再试");
+        }
+        return d;
     }
-    if (d->status == CodeReaderStatus::Grabbing) {
-        throw std::logic_error(std::string(caller) +
-                               "：当前为取流状态，无法设置参数；请先 stopDevice，再调用 openDeviceForParameters");
-    }
-    if (d->status == CodeReaderStatus::Connected) {
-        throw std::logic_error(
-            std::string(caller) + "：设备尚未打开；请先调用 openDeviceForParameters 进入 Open 状态后再试");
-    }
-    return d;
-}
 
-/** 在 Open 状态下调用 apiName 对应的 SDK Set*。 */
-template <typename F>
-void setParamOpened(const std::string &sn, const char *apiName, F &&f) {
-    CodeReader *device = requireOpenForParameter(sn, apiName);
-    checkSdkOk(f(device->handle), apiName);
-}
+    /** 在 Open 状态下调用 apiName 对应的 SDK Set*。 */
+    template <typename F>
+    void setParamOpened(const std::string &sn, const char *apiName, F &&f) {
+        CodeReader *device = requireOpenForParameter(sn, apiName);
+        checkSdkOk(f(device->handle), apiName);
+    }
 
 } // namespace
 

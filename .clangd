@@ -3,3 +3,10 @@ CompileFlags:
     - -Iinclude
     - -Iinclude/MvCodeReader
     - -Isrc/code_reader
+
+# tests 依赖 CMake FetchContent 的 gtest（默认在 build/_deps 下），与 compile_commands.json 一致
+If:
+  PathMatch: tests/.*\.cpp
+CompileFlags:
+  Add:
+    - -Ibuild/_deps/googletest-src/googletest/include

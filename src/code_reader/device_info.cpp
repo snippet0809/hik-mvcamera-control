@@ -14,13 +14,13 @@ std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
 namespace {
 
-std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
-    std::size_t n = 0;
-    while (n < len && buf[n] != '\0') {
-        ++n;
+    std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
+        std::size_t n = 0;
+        while (n < len && buf[n] != '\0') {
+            ++n;
+        }
+        return std::string(reinterpret_cast<const char *>(buf), n);
     }
-    return std::string(reinterpret_cast<const char *>(buf), n);
-}
 
 } // namespace
 

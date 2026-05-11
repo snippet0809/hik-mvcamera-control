@@ -17,85 +17,85 @@
 
 namespace {
 
-thread_local std::string g_lastError;
+    thread_local std::string g_lastError;
 
-void setLastError(std::string msg) {
-    g_lastError = std::move(msg);
-}
+    void setLastError(std::string msg) {
+        g_lastError = std::move(msg);
+    }
 
-bool requireNonNull(const char *p, const char *what) {
-    if (p != nullptr) {
+    bool requireNonNull(const char *p, const char *what) {
+        if (p != nullptr) {
+            return true;
+        }
+        setLastError(std::string("null pointer: ") + what);
+        return false;
+    }
+
+    bool copyField(char *dest, size_t destCap, const std::string &src) {
+        if (destCap == 0) {
+            return false;
+        }
+        if (src.size() >= destCap) {
+            setLastError("device field exceeds HIK_CR_*_MAX");
+            return false;
+        }
+        std::memcpy(dest, src.c_str(), src.size() + 1);
         return true;
     }
-    setLastError(std::string("null pointer: ") + what);
-    return false;
-}
 
-bool copyField(char *dest, size_t destCap, const std::string &src) {
-    if (destCap == 0) {
-        return false;
+    template <typename F>
+    HikCrResult wrap(F &&f) {
+        try {
+            std::forward<F>(f)();
+            return HIK_CR_OK;
+        } catch (const std::invalid_argument &e) {
+            setLastError(e.what());
+            return HIK_CR_ERR_INVALID_ARG;
+        } catch (const std::logic_error &e) {
+            setLastError(e.what());
+            return HIK_CR_ERR_LOGIC;
+        } catch (const std::runtime_error &e) {
+            setLastError(e.what());
+            return HIK_CR_ERR_RUNTIME;
+        } catch (const std::bad_alloc &) {
+            setLastError("bad_alloc");
+            return HIK_CR_ERR_NO_MEMORY;
+        } catch (const std::exception &e) {
+            setLastError(e.what());
+            return HIK_CR_ERR_UNKNOWN;
+        } catch (...) {
+            setLastError("unknown non-std exception");
+            return HIK_CR_ERR_UNKNOWN;
+        }
     }
-    if (src.size() >= destCap) {
-        setLastError("device field exceeds HIK_CR_*_MAX");
-        return false;
-    }
-    std::memcpy(dest, src.c_str(), src.size() + 1);
-    return true;
-}
 
-template <typename F>
-HikCrResult wrap(F &&f) {
-    try {
-        std::forward<F>(f)();
-        return HIK_CR_OK;
-    } catch (const std::invalid_argument &e) {
-        setLastError(e.what());
-        return HIK_CR_ERR_INVALID_ARG;
-    } catch (const std::logic_error &e) {
-        setLastError(e.what());
-        return HIK_CR_ERR_LOGIC;
-    } catch (const std::runtime_error &e) {
-        setLastError(e.what());
-        return HIK_CR_ERR_RUNTIME;
-    } catch (const std::bad_alloc &) {
-        setLastError("bad_alloc");
-        return HIK_CR_ERR_NO_MEMORY;
-    } catch (const std::exception &e) {
-        setLastError(e.what());
-        return HIK_CR_ERR_UNKNOWN;
-    } catch (...) {
-        setLastError("unknown non-std exception");
-        return HIK_CR_ERR_UNKNOWN;
-    }
-}
+    std::mutex g_bcrMutex;
+    HikCrBcrCallback g_bcrCb = nullptr;
+    void *g_bcrUser = nullptr;
 
-std::mutex g_bcrMutex;
-HikCrBcrCallback g_bcrCb = nullptr;
-void *g_bcrUser = nullptr;
-
-void installBcrForwarderOnce() {
-    static std::once_flag once;
-    std::call_once(once, [] {
-        registerImageCallback([](std::vector<std::string> codeArr) {
-            HikCrBcrCallback cb = nullptr;
-            void *ud = nullptr;
-            {
-                std::lock_guard<std::mutex> lock(g_bcrMutex);
-                cb = g_bcrCb;
-                ud = g_bcrUser;
-            }
-            if (cb == nullptr) {
-                return;
-            }
-            std::vector<const char *> ptrs;
-            ptrs.reserve(codeArr.size());
-            for (const auto &s : codeArr) {
-                ptrs.push_back(s.c_str());
-            }
-            cb(ptrs.data(), static_cast<int>(ptrs.size()), ud);
+    void installBcrForwarderOnce() {
+        static std::once_flag once;
+        std::call_once(once, [] {
+            registerImageCallback([](std::vector<std::string> codeArr) {
+                HikCrBcrCallback cb = nullptr;
+                void *ud = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(g_bcrMutex);
+                    cb = g_bcrCb;
+                    ud = g_bcrUser;
+                }
+                if (cb == nullptr) {
+                    return;
+                }
+                std::vector<const char *> ptrs;
+                ptrs.reserve(codeArr.size());
+                for (const auto &s : codeArr) {
+                    ptrs.push_back(s.c_str());
+                }
+                cb(ptrs.data(), static_cast<int>(ptrs.size()), ud);
+            });
         });
-    });
-}
+    }
 
 } // namespace
 

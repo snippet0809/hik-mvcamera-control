@@ -5,13 +5,15 @@
       "includePath": [
         "${workspaceFolder}/include",
         "${workspaceFolder}/src/code_reader",
-        "${workspaceFolder}/include/MvCodeReader"
+        "${workspaceFolder}/include/MvCodeReader",
+        "${workspaceFolder}/build/_deps/googletest-src/googletest/include"
       ],
       "browse": {
         "path": [
           "${workspaceFolder}/include",
           "${workspaceFolder}/src/code_reader",
-          "${workspaceFolder}/include/MvCodeReader"
+          "${workspaceFolder}/include/MvCodeReader",
+          "${workspaceFolder}/build/_deps/googletest-src/googletest/include"
         ]
       },
       "defines": [],

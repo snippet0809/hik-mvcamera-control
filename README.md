@@ -179,7 +179,7 @@ import "github.com/you/hik-mvcamera-control/ffi/go/hikcr"
 ## 构建要求
 
 - **CMake** 4.0 及以上（见根目录 `CMakeLists.txt`）。
-- 支持 C++17 或项目所用特性的 **MSVC**（当前工程通过 `FetchContent` 拉取 **GoogleTest** 与 **{fmt}**）。
+- 支持 C++17 或项目所用特性的 **MSVC**（当前工程通过 `FetchContent` 拉取 **GoogleTest**）。
 - **Windows**：默认链接 `lib/MvCodeReader/win64/MvCodeReaderCtrl.lib`；若在 32 位环境构建，需自行将 CMake 中的库路径改为 `win32` 对应文件。
 
 ## 构建与测试
@@ -190,7 +190,7 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-首次配置会从网络下载 GTest 与 fmt；需保证构建环境可访问 GitHub。
+首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。
 
 产物说明：
 
@@ -206,7 +206,7 @@ ctest --test-dir build -C Release
 
 ## 许可证与第三方
 
-海康威视 **MvCamera / MvCodeReader** SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest、{fmt} 遵循各自开源协议（由 CMake `FetchContent` 获取）。
+海康威视 **MvCamera / MvCodeReader** SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest 遵循其开源协议（由 CMake `FetchContent` 获取）。
 
 ## 相关文档
 

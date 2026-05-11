@@ -27,7 +27,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # -----------------------------------------------------------------------------
-# 第三方库：GoogleTest（测试）与 {fmt}（测试里打印格式化）
+# 第三方库：GoogleTest（测试）
 # -----------------------------------------------------------------------------
 # FetchContent：在配置阶段从网络下载依赖源码并加入当前工程（无需系统预装）。
 # 使用 zip URL 而非 git clone：不依赖本机安装 Git，部分网络环境也更省事。
@@ -40,14 +40,8 @@ FetchContent_Declare(
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 
-FetchContent_Declare(
-    fmt
-    URL https://github.com/fmtlib/fmt/archive/refs/tags/12.1.0.zip
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-
-# 下载、add_subdirectory、定义目标 GTest::gtest_main、fmt::fmt 等，供后面 target_link_libraries 使用。
-FetchContent_MakeAvailable(googletest fmt)
+# 下载、add_subdirectory、定义目标 GTest::gtest_main 等，供后面 target_link_libraries 使用。
+FetchContent_MakeAvailable(googletest)
 
 # -----------------------------------------------------------------------------
 # 读码器封装：源文件列表（与海康 SDK 头文件 + MvCodeReaderCtrl.lib 一起编进库）
@@ -115,11 +109,10 @@ add_executable(all_tests ${TEST_SOURCES})
 target_include_directories(all_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/code_reader
 )
-# 链接：本工程静态库 + GoogleTest（提供 main 与断言宏）+ fmt（测试代码打印）。
+# 链接：本工程静态库 + GoogleTest（提供 main 与断言宏）。
 target_link_libraries(all_tests PRIVATE
     hik_code_reader
     GTest::gtest_main
-    fmt::fmt
 )
 
 # 向 CTest 注册每个 TEST() 用例，便于 ctest -R 筛选、IDE 里单独跑某条测试。
@@ -146,7 +139,14 @@ foreach(_HIK_REL IN LISTS _HIK_CLANGD_CPP)
     cmake_path(CONVERT "${_HIK_REL}" TO_CMAKE_PATH_LIST _HIK_REL NORMALIZE)
     string(REPLACE "\\" "/" _HIK_REL_JSON "${_HIK_REL}")
     set(_HIK_FILE "${_HIK_CLANGD_ROOT_JSON}/${_HIK_REL_JSON}")
-    set(_HIK_CMD "clang++ -std=c++17 -Wno-unused-command-line-argument -I${_HIK_CLANGD_ROOT_JSON}/include -I${_HIK_CLANGD_ROOT_JSON}/include/MvCodeReader -I${_HIK_CLANGD_ROOT_JSON}/src/code_reader -c ${_HIK_FILE}")
+    set(_HIK_CMD "clang++ -std=c++17 -Wno-unused-command-line-argument -I${_HIK_CLANGD_ROOT_JSON}/include -I${_HIK_CLANGD_ROOT_JSON}/include/MvCodeReader -I${_HIK_CLANGD_ROOT_JSON}/src/code_reader")
+    # 测试源文件还依赖 FetchContent 的 gtest 头文件，否则 clangd 会报一整串假错误
+    if(_HIK_REL_JSON MATCHES "^tests/")
+        cmake_path(CONVERT "${googletest_SOURCE_DIR}/googletest/include" TO_CMAKE_PATH_LIST _HIK_GTEST_INC NORMALIZE)
+        string(REPLACE "\\" "/" _HIK_GTEST_INC_JSON "${_HIK_GTEST_INC}")
+        string(APPEND _HIK_CMD " -I${_HIK_GTEST_INC_JSON}")
+    endif()
+    string(APPEND _HIK_CMD " -c ${_HIK_FILE}")
     string(APPEND _HIK_CLANGD_JSON "${_HIK_CLANGD_SEP}\n  {\n    \"directory\": \"${_HIK_CLANGD_ROOT_JSON}\",\n    \"file\": \"${_HIK_FILE}\",\n    \"command\": \"${_HIK_CMD}\"\n  }")
     set(_HIK_CLANGD_SEP ",")
 endforeach()
