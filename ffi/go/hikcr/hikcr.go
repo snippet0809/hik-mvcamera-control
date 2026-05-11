@@ -5,7 +5,7 @@
 //
 //	# PowerShell
 //	$env:CGO_CFLAGS="-I$PWD/include"
-//	$env:CGO_LDFLAGS="-L$PWD/build/Release -lhik_code_reader"
+//	$env:CGO_LDFLAGS="-L$PWD/build -lhik_code_reader"
 //	go build ./ffi/go/hikcr
 package hikcr
 
