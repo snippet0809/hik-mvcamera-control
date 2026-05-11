@@ -1,8 +1,8 @@
 """
 ctypes 封装 `hik_code_reader` C API（参考实现）。
 
-正式发布与 wheel 构建以仓库内 ``python/hik_code_reader`` 为准（包内 ``_native/hik_code_reader.dll``）。
-仍可通过 ``HIK_CODE_READER_DLL`` 或当前目录 / PATH 下的 ``hik_code_reader.dll`` 加载。
+正式发布与 wheel 构建以仓库内 ``python/hik_code_reader`` 为准（包内 ``_native/``，含 Windows 下 DLL 搜索路径与 ``LoadLibraryEx`` 行为）。
+本文件为精简参考；生产环境请使用 ``python/hik_code_reader`` 包。
 """
 from __future__ import annotations
 

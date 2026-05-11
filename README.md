@@ -24,7 +24,7 @@ flowchart TB
 ```
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
-- **Python 正式包**：`python/` 下 `build` 打 wheel，构建前将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`（CI / 发版流程中完成；wheel 内同时带 DLL 与厂商导入库，便于再链原生代码）。  
+- **Python 正式包**：`python/` 下 `build` 打 wheel，CI / 发版仅将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`；**不把海康运行时 DLL 绑在「开发机是否安装 MVS」上**。终端环境通过安装 MVS/IDMVS Runtime 或你方**专用打包流水线**（自托管 Runner、私有制品等）提供 ``MvCodeReaderCtrl.dll`` 等。  
 - **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 CI 与 `go.dev/issue/20982`）。
 
 ### GitHub Actions 在流程中的位置
@@ -126,17 +126,16 @@ pip install "hik-code-reader==0.1.0" \
 ```python
 from hik_code_reader import HikCodeReader
 
-cr = HikCodeReader()  # wheel 内有 hik_code_reader.dll；海康 MvCodeReaderCtrl 等仍依赖本机 RunTime / PATH
+cr = HikCodeReader()  # wheel 内有 hik_code_reader.dll；MvCodeReaderCtrl 等 DLL 由本机 Runtime 或你方部署方式提供
 print(cr.enum_devices())
 ```
 
 **pip 安装后提示找不到 DLL / WinError 126 / 0xc0000135**  
 
-wheel 里只有 **`hik_code_reader.dll`**（及 `.lib`），**不包含**海康 **`MvCodeReaderCtrl.dll`** 等运行时库。加载 `hik_code_reader.dll` 时，系统还要能解析这些依赖。
-
-1. 安装 **MVS RunTime 3.0.0+** 与/或 **IDMVS**（位数与 Python 一致，一般为 64 位），让安装程序写入 **`Path`** 及海康常用变量（如 **`GENICAM_GENTL64_PATH`**、**`MVCAM_GENICAM_CLPROTOCOL`** 等）。  
-2. **Python 包（Windows）**在 `ctypes` 加载前会按 **`GENICAM_GENTL64_PATH` / `GENICAM_GENTL32_PATH`**（随解释器位数）、**`MVCAM_GENICAM_CLPROTOCOL`**，以及 **`Path`** 中含 **`MVS` / `IDMVS` / `MvSDK` / `MvCode`** 的目录依次调用 `os.add_dll_directory`，与 IDMVS 自动配置的典型环境一致（**不引入本仓库自定义的「海康路径」环境变量名**）。  
-3. 若仍失败：确认上述变量在 **启动 Python 的进程**里可见（同一终端 `echo %GENICAM_GENTL64_PATH%` / PowerShell `$env:GENICAM_GENTL64_PATH`）；或用依赖查看工具打开 **`hik_code_reader.dll`** 核对缺失的 `.dll`。
+- **公共 wheel** 不含海康运行时 ``*.dll``（CI 不假设维护者电脑装了 MVS）。请在 **运行工控机** 上安装 **MVS/IDMVS RunTime**（或与 SDK 版本匹配的官方运行库），使 **`Path`** / **`GENICAM_GENTL64_PATH`** / **`MVCAM_GENICAM_CLPROTOCOL`** 等到位。  
+- 若你要 **免安装分发**：在你方**固定版本、可复现**的打包环境（例如已装对应 MVS 的 **自托管 Runner**、或从**私有制品库**取与 SDK 锁定的 DLL 集）里组装配应用，**不要**依赖「开发 SDK 的那台 PC」是否装了 Runtime。  
+- **Python（Windows）**在 `ctypes` 加载前：将 **`hik_code_reader.dll` 所在目录**置于 **`PATH` 与 `add_dll_directory` 优先**，再补充上述海康变量与 **`Path`** 中含 **`MVS` / `IDMVS` / `MvSDK` / `MvCode`** 的目录；并使用 **`LoadLibraryEx`** 标志，便于把 **`MvCodeReaderCtrl.dll`** 等与 `hik_code_reader.dll` **放在同一目录**时能被解析。  
+- 若仍失败：用依赖查看工具打开 **`hik_code_reader.dll`** 核对缺失的 `.dll`；并确认 **VC++ x64 运行库**已安装。
 
 ### Go 开发者
 
@@ -161,6 +160,7 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 **说明**：
 
 - **cgo**：需本机可链接 `hik_code_reader`（`.lib` + 运行时 `dll`）；**C 编译器用 MinGW `gcc` 等**，与用 MSVC 编出的 `hik_code_reader.dll` 不矛盾。**Release** 附件中的 zip 含 `ffi/go` 与 `include/hik_code_reader`，可与同版 `dll`/`lib` 一起用于集成。  
+- **Windows 运行时 DLL**：`hikcr` 在 cgo 加载前会按与上文 **Python（Windows）** 相同的规则调用 `AddDllDirectory`（`GENICAM_GENTL*`、`MVCAM_GENICAM_CLPROTOCOL`、`Path` 启发式，以及 **`HIK_CODE_READER_DLL`** 所在目录），便于解析 `MvCodeReaderCtrl.dll` 等依赖。  
 - **私有仓库**：  
   `go env -w GOPRIVATE=github.com/snippet0809/*`  
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。
