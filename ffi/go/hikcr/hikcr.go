@@ -15,10 +15,11 @@ package hikcr
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"
 
-// Return the //export callback as HikCrBcrCallback. Do not use C.hikcrGoBcrShim from Go — cgo does not
-// resolve exported Go symbols there (go#19837: "could not determine kind of name for C.hikcrGoBcrShim").
+// Must match cgo-generated signature (see _cgo_export / prolog); do not use `extern void f();` — that is void(void) and conflicts.
+extern void hikcrGoBcrShim(char **codes, int code_count, void *user_data);
+
+// Return //export shim as HikCrBcrCallback (Go cannot reference C.hikcrGoBcrShim; go#19837).
 HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
-	extern void hikcrGoBcrShim();
 	return (HikCrBcrCallback)hikcrGoBcrShim;
 }
 */
