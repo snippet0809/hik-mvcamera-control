@@ -95,10 +95,21 @@ GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代
 
 ### Python 开发者
 
-**环境**：当前 wheel 为 **Windows x64**，需在对应环境安装。
+**环境**：当前 wheel 为 **Windows x64**（文件名中含 **`win_amd64`**），需在对应环境安装。
 
-**方式 A（推荐，像用「私有 PyPI 源」一样）**  
-在维护者已开启 **Pages** 且发过版的前提下：
+**方式 A：从 GitHub Release 直链安装 wheel（不依赖 Pages，最省事）**  
+
+1. 打开本仓库 **[Releases](https://github.com/snippet0809/hik-mvcamera-control/releases)**，选择对应版本（如 **`v0.0.1`**）。  
+2. 在 **Assets** 里找到 **`hik_code_reader-…-py3-none-win_amd64.whl`**，复制其「直链」；或直接使用与 tag、版本一致的 URL（**tag 带 `v`，包版本号无 `v`**）：
+
+```bash
+pip install "https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.0.1/hik_code_reader-0.0.1-py3-none-win_amd64.whl"
+```
+
+其它版本请把 URL 中的 **`v0.0.1`** / **`0.0.1`** 换成你的 tag 与 `pyproject` 版本；**wheel 完整文件名以该 Release 页 Assets 为准**。
+
+**方式 B：像「私有 PyPI 源」一样用 PEP 503（依赖 Pages）**  
+在维护者已开启 **GitHub Pages**（`gh-pages`）且发过版的前提下：
 
 ```bash
 pip install "hik-code-reader==0.1.0" \
@@ -107,16 +118,8 @@ pip install "hik-code-reader==0.1.0" \
 ```
 
 - 版本号 **`0.1.0`** 与 Git 标签 **`v0.1.0`** 对应（无 `v`）。  
-- `--trusted-host` 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。
-
-**方式 B（不依赖 Pages，直链 wheel）**  
-在 **Releases** 中复制对应版本的 `.whl` 下载地址：
-
-```bash
-pip install "https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.1.0/hik_code_reader-0.1.0-py3-none-win_amd64.whl"
-```
-
-（文件名随版本变化，以 Release 页为准。）
+- `--trusted-host` 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。  
+- 首次如何开 Pages、索引如何生成，见上文 **「在 GitHub 上托管分发」** 与 **README** 中维护者章节。
 
 **代码示例**：
 
