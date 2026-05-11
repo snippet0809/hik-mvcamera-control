@@ -5,6 +5,7 @@
 #   cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 #   cmake --build build --config Release
 #   ctest --test-dir build -C Release
+# 配置阶段会在仓库根目录生成 compile_commands.json（已 .gitignore），供 clangd / Cursor 找到 MvCodeReader 等头文件。
 # 当前工程面向 Windows x64，链接海康 MvCodeReader 的 win64 静态库。
 # =============================================================================
 
@@ -13,6 +14,10 @@ cmake_minimum_required(VERSION 4.0)
 
 # 定义工程名；同时会设置 PROJECT_SOURCE_DIR 等变量，供下面路径引用。
 project(hik-mvcamera-control)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # -----------------------------------------------------------------------------
 # 工具链 / IDE：生成 compile_commands.json
@@ -120,3 +125,30 @@ target_link_libraries(all_tests PRIVATE
 # 向 CTest 注册每个 TEST() 用例，便于 ctest -R 筛选、IDE 里单独跑某条测试。
 include(GoogleTest)
 gtest_discover_tests(all_tests)
+
+# -----------------------------------------------------------------------------
+# clangd / Cursor：仓库根目录 compile_commands.json
+# -----------------------------------------------------------------------------
+# Visual Studio 等多配置生成器通常不在构建目录写出 compile_commands.json，clangd 会找不到
+# MvCodeReaderCtrl.h 等 include。每次 CMake 配置时在源码根生成一份（路径随本机变化，已加入 .gitignore）。
+set(_HIK_CLANGD_ROOT "${CMAKE_SOURCE_DIR}")
+cmake_path(CONVERT "${_HIK_CLANGD_ROOT}" TO_CMAKE_PATH_LIST _HIK_CLANGD_ROOT NORMALIZE)
+string(REPLACE "\\" "/" _HIK_CLANGD_ROOT_JSON "${_HIK_CLANGD_ROOT}")
+set(_HIK_CLANGD_CPP ${HIK_CODE_READER_SOURCES})
+list(APPEND _HIK_CLANGD_CPP ${TEST_SOURCES})
+set(_HIK_CLANGD_JSON "[")
+set(_HIK_CLANGD_SEP "")
+foreach(_HIK_REL IN LISTS _HIK_CLANGD_CPP)
+    cmake_path(IS_ABSOLUTE _HIK_REL _HIK_REL_ABS)
+    if(_HIK_REL_ABS)
+        file(RELATIVE_PATH _HIK_REL "${CMAKE_SOURCE_DIR}" "${_HIK_REL}")
+    endif()
+    cmake_path(CONVERT "${_HIK_REL}" TO_CMAKE_PATH_LIST _HIK_REL NORMALIZE)
+    string(REPLACE "\\" "/" _HIK_REL_JSON "${_HIK_REL}")
+    set(_HIK_FILE "${_HIK_CLANGD_ROOT_JSON}/${_HIK_REL_JSON}")
+    set(_HIK_CMD "clang++ -std=c++17 -Wno-unused-command-line-argument -I${_HIK_CLANGD_ROOT_JSON}/include -I${_HIK_CLANGD_ROOT_JSON}/include/MvCodeReader -I${_HIK_CLANGD_ROOT_JSON}/src/code_reader -c ${_HIK_FILE}")
+    string(APPEND _HIK_CLANGD_JSON "${_HIK_CLANGD_SEP}\n  {\n    \"directory\": \"${_HIK_CLANGD_ROOT_JSON}\",\n    \"file\": \"${_HIK_FILE}\",\n    \"command\": \"${_HIK_CMD}\"\n  }")
+    set(_HIK_CLANGD_SEP ",")
+endforeach()
+string(APPEND _HIK_CLANGD_JSON "\n]\n")
+file(WRITE "${CMAKE_SOURCE_DIR}/compile_commands.json" "${_HIK_CLANGD_JSON}")

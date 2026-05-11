@@ -116,8 +116,7 @@ var (
 )
 
 //export hikcrGoBcrShim
-func hikcrGoBcrShim(codes **C.char, count C.int, user unsafe.Pointer) {
-	_ = user
+func hikcrGoBcrShim(codes **C.char, count C.int, _ unsafe.Pointer) {
 	bcrMu.Lock()
 	fn := bcrFn
 	bcrMu.Unlock()

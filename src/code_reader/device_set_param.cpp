@@ -7,7 +7,6 @@
 #include "code_reader.h"
 #include "code_reader_detail.h"
 #include <stdexcept>
-#include <string>
 
 namespace {
 

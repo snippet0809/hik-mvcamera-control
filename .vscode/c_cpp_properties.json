@@ -7,11 +7,18 @@
         "${workspaceFolder}/src/code_reader",
         "${workspaceFolder}/include/MvCodeReader"
       ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/include",
+          "${workspaceFolder}/src/code_reader",
+          "${workspaceFolder}/include/MvCodeReader"
+        ]
+      },
       "defines": [],
       "cStandard": "c17",
       "cppStandard": "c++17",
       "intelliSenseMode": "windows-msvc-x64",
-      "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+      "compileCommands": "${workspaceFolder}/compile_commands.json"
     }
   ],
   "version": 4

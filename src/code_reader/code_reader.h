@@ -41,7 +41,7 @@ void setIp(const std::string &sn, const std::string &ip, const std::string &mask
  * 注册读码结果回调；在识别到条码且类型为 BCR 时，于 SDK 线程调用。
  * 空 std::function 表示取消；建议在 startDevice 之前注册。
  */
-void registerImageCallback(const std::function<void(std::vector<std::string> codeArr)> &callback);
+void registerImageCallback(const std::function<void(std::vector<std::string>)> &callback);
 
 /**
  * 软触发（TriggerSoftware）。要求：已成功 startDevice，当前处于取流中。

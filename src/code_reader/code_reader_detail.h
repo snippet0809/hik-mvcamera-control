@@ -9,7 +9,6 @@
 #include <istream>
 #include <sstream>
 #include <string>
-#include <vector>
 
 /** 设备在本库中的运行状态（句柄 / 已打开 / 取流）。 */
 enum class CodeReaderStatus {
@@ -41,14 +40,10 @@ void destroyDevice(const std::string &sn);
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 
-inline std::string toHexStr(std::uint32_t value) {
-    std::stringstream ss;
-    ss << "0x" << std::hex << std::uppercase << value;
-    return ss.str();
-}
-
 inline std::string toHexStr(int value) {
-    return toHexStr(static_cast<std::uint32_t>(value));
+    std::stringstream ss;
+    ss << "0x" << std::hex << std::uppercase << static_cast<std::uint32_t>(value);
+    return ss.str();
 }
 
 inline std::string intToIp(unsigned int ip) {

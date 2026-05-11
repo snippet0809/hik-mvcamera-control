@@ -8,7 +8,6 @@
 #include "code_reader.h"
 #include "code_reader_detail.h"
 #include <stdexcept>
-#include <string>
 
 /**
  * 见 code_reader.h。Connected → Open；Grabbing 抛 std::logic_error；已为 Open 则无操作。

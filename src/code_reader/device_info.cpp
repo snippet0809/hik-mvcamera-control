@@ -7,8 +7,7 @@
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
 #include "code_reader_detail.h"
-#include <cstddef>
-#include <stdexcept>
+#include <memory>
 #include <unordered_map>
 
 std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
@@ -43,8 +42,7 @@ CodeReader::~CodeReader() {
     if (handle == nullptr) {
         return;
     }
-    int destroyRet = MV_CODEREADER_DestroyHandle(handle);
-    (void)destroyRet;
+    MV_CODEREADER_DestroyHandle(handle);
 }
 
 /**

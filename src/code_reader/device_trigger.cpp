@@ -16,7 +16,7 @@
 namespace {
 
 /** 软触发命令节点名（GenICam 常见命名，具体以设备 XML 为准）。 */
-constexpr const char kTriggerSoftware[] = "TriggerSoftware";
+constexpr const char *kTriggerSoftware = "TriggerSoftware";
 
 /** 保护 g_imageCallback，避免与 SDK 回调线程并发读写。 */
 std::mutex g_imageCallbackMutex;
@@ -63,9 +63,8 @@ std::vector<std::string> extractBcrStrings(const MV_CODEREADER_IMAGE_OUT_INFO &i
  * SDK 要求的 __stdcall 图像回调桥接函数。
  * pData 为图像缓冲（此处只关心读码结果，不解析像素）；pstFrameInfo 含 BCR 等元数据。
  */
-void __stdcall sdkImageCallbackBridge(unsigned char *pData, MV_CODEREADER_IMAGE_OUT_INFO *pstFrameInfo, void *pUser) {
-    (void)pData;
-    (void)pUser;
+void __stdcall sdkImageCallbackBridge([[maybe_unused]] unsigned char *pData, MV_CODEREADER_IMAGE_OUT_INFO *pstFrameInfo,
+                                      [[maybe_unused]] void *pUser) {
     if (pstFrameInfo == nullptr) {
         return;
     }
@@ -90,7 +89,7 @@ void __stdcall sdkImageCallbackBridge(unsigned char *pData, MV_CODEREADER_IMAGE_
 /**
  * 注册/更新/清空读码结果回调（仅更新内存；真正写入 SDK 在每次 startGrabbing 前完成）。
  */
-void registerImageCallback(const std::function<void(std::vector<std::string> codeArr)> &callback) {
+void registerImageCallback(const std::function<void(std::vector<std::string>)> &callback) {
     std::lock_guard<std::mutex> lock(g_imageCallbackMutex);
     g_imageCallback = callback;
 }
