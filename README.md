@@ -190,6 +190,13 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
+**CI / 无 VS2022 生成器时**可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 `build/hik_code_reader.dll`）：
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
 首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。
 
 产物说明：

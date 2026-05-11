@@ -34,20 +34,24 @@ jobs:
         with:
           cmake-version: "4.0.2"
 
+      - name: Install Ninja
+        run: choco install ninja --yes
+
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      # Ninja + MSVC：不依赖「Visual Studio 17 2022」生成器（windows-latest 可能未装 VS2022）
       - name: Configure & build native DLL
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-          cmake --build build --config Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
 
       - name: Stage DLL for Python wheel
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path python/hik_code_reader/_native | Out-Null
-          Copy-Item -Force "build/Release/hik_code_reader.dll" "python/hik_code_reader/_native/"
+          Copy-Item -Force "build/hik_code_reader.dll" "python/hik_code_reader/_native/"
 
       - name: Build wheel
         run: |
@@ -67,8 +71,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path publish | Out-Null
           Copy-Item -Force "python/dist/*" "publish/"
-          Copy-Item -Force "build/Release/hik_code_reader.dll" "publish/"
-          Copy-Item -Force "build/Release/hik_code_reader.lib" "publish/"
+          Copy-Item -Force "build/hik_code_reader.dll" "publish/"
+          Copy-Item -Force "build/hik_code_reader.lib" "publish/"
           Get-ChildItem publish
 
       - id: wheelmeta
