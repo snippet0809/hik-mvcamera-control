@@ -351,9 +351,9 @@
 </table>
 <h3>维护者一次性配置</h3>
 <ol>
-<li>保证 <strong><code>ffi/go/go.mod</code></strong> 第一行与你的 GitHub 路径一致，例如仓库 <code>https://github.com/you/hik-mvcamera-control</code> 时应为：<br />
-<code>module github.com/you/hik-mvcamera-control/ffi/go</code><br />
-   （本仓库示例为 <code>github.com/snipp/hik-mvcamera-control/ffi/go</code>，若你的用户名或组织不同，请改这一行并提交。）</li>
+<li>保证 <strong><code>ffi/go/go.mod</code></strong> 第一行与 GitHub 仓库路径一致。本仓库应为：<br />
+<code>module github.com/snippet0809/hik-mvcamera-control/ffi/go</code><br />
+   （若 fork 后自用，请改为 <code>github.com/&lt;你的用户名&gt;/hik-mvcamera-control/ffi/go</code>。）</li>
 <li>在 GitHub 打开本仓库：<strong>Settings → Pages</strong>  </li>
 <li><strong>Build and deployment</strong>：Source 选 <strong>Deploy from a branch</strong>  </li>
 <li>Branch 选 <strong><code>gh-pages</code></strong>，文件夹选 <strong><code>/(root)</code></strong>  </li>
@@ -379,14 +379,14 @@
 </ul>
 <hr />
 <h2>开发者使用指南</h2>
-<p>以下假设仓库为 <code>github.com/you/hik-mvcamera-control</code>，请把 <code>you</code> / 仓库名换成实际路径。</p>
+<p>以下示例以本仓库 <code>github.com/snippet0809/hik-mvcamera-control</code> 为准；若你 fork 或改名，请替换路径中的用户名与仓库名。</p>
 <h3>Python 开发者</h3>
 <p><strong>环境</strong>：当前 wheel 为 <strong>Windows x64</strong>，需在对应环境安装。</p>
 <p><strong>方式 A（推荐，像用「私有 PyPI 源」一样）</strong><br />
 在维护者已开启 <strong>Pages</strong> 且发过版的前提下：</p>
 <pre><code class="language-bash">pip install &quot;hik-code-reader==0.1.0&quot; \
-  --index-url &quot;https://you.github.io/hik-mvcamera-control/simple/&quot; \
-  --trusted-host &quot;you.github.io&quot;
+  --index-url &quot;https://snippet0809.github.io/hik-mvcamera-control/simple/&quot; \
+  --trusted-host &quot;snippet0809.github.io&quot;
 </code></pre>
 <ul>
 <li>版本号 <strong><code>0.1.0</code></strong> 与 Git 标签 <strong><code>v0.1.0</code></strong> 对应（无 <code>v</code>）。  </li>
@@ -394,7 +394,7 @@
 </ul>
 <p><strong>方式 B（不依赖 Pages，直链 wheel）</strong><br />
 在 <strong>Releases</strong> 中复制对应版本的 <code>.whl</code> 下载地址：</p>
-<pre><code class="language-bash">pip install &quot;https://github.com/you/hik-mvcamera-control/releases/download/v0.1.0/hik_code_reader-0.1.0-py3-none-win_amd64.whl&quot;
+<pre><code class="language-bash">pip install &quot;https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.1.0/hik_code_reader-0.1.0-py3-none-win_amd64.whl&quot;
 </code></pre>
 <p>（文件名随版本变化，以 Release 页为准。）</p>
 <p><strong>代码示例</strong>：</p>
@@ -405,19 +405,19 @@ print(cr.enum_devices())
 </code></pre>
 <h3>Go 开发者</h3>
 <p><strong>模块路径</strong>（须与仓库 <code>go.mod</code> 一致）：</p>
-<pre><code class="language-text">github.com/you/hik-mvcamera-control/ffi/go
+<pre><code class="language-text">github.com/snippet0809/hik-mvcamera-control/ffi/go
 </code></pre>
 <p><strong>安装指定版本</strong>（与已发布的 <strong><code>vX.Y.Z</code></strong> / 自动打的 <strong><code>ffi/go/vX.Y.Z</code></strong> 一致）：</p>
-<pre><code class="language-bash">go get github.com/you/hik-mvcamera-control/ffi/go@v0.1.0
+<pre><code class="language-bash">go get github.com/snippet0809/hik-mvcamera-control/ffi/go@v0.1.0
 </code></pre>
 <p><strong>代码中导入</strong>：</p>
-<pre><code class="language-go">import &quot;github.com/you/hik-mvcamera-control/ffi/go/hikcr&quot;
+<pre><code class="language-go">import &quot;github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr&quot;
 </code></pre>
 <p><strong>说明</strong>：</p>
 <ul>
 <li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（<code>.lib</code> + 运行时 <code>dll</code>）；<strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，与用 MSVC 编出的 <code>hik_code_reader.dll</code> 不矛盾。<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
 <li><strong>私有仓库</strong>：<br />
-<code>go env -w GOPRIVATE=github.com/you/*</code><br />
+<code>go env -w GOPRIVATE=github.com/snippet0809/*</code><br />
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
 </ul>
 <h2>GitHub Actions 摘要</h2>
