@@ -1,6 +1,9 @@
 """
 海康读码器 C API 的 ctypes 封装。wheel 内附带 Windows x64 的 ``hik_code_reader.dll``（``_native`` 目录）。
-也可通过环境变量 ``HIK_CODE_READER_DLL`` 覆盖 DLL 路径。
+
+- ``HIK_CODE_READER_DLL``：显式指定 ``hik_code_reader.dll`` 路径（可选）。
+- ``HIK_CODE_READER_VENDOR_DLL_DIR``：含海康 **运行时** ``MvCodeReaderCtrl.dll`` 等目录；wheel **不自带** 这些 DLL，
+  若未把它们所在目录加入系统 ``Path``，请设此变量或安装 RunTime 后保证 ``Path``（见仓库 README）。
 """
 
 from __future__ import annotations
@@ -61,15 +64,39 @@ def default_native_dll() -> Path:
     return Path(__file__).resolve().parent / "_native" / "hik_code_reader.dll"
 
 
+def _windows_add_dll_search_paths(dll_path: Path) -> None:
+    """加载 ``hik_code_reader.dll`` 前，把依赖搜索路径交给 Windows（Python 3.8+）。"""
+    if os.name != "nt":
+        return
+    add = getattr(os, "add_dll_directory", None)
+    if add is None:
+        return
+    vendor = os.environ.get("HIK_CODE_READER_VENDOR_DLL_DIR", "").strip()
+    if vendor:
+        vp = Path(vendor)
+        if vp.is_dir():
+            add(str(vp))
+    parent = dll_path.parent
+    if parent.is_dir():
+        add(str(parent))
+
+
 def _load_dll(path: str | None) -> ctypes.CDLL:
     if path:
-        return ctypes.CDLL(path)
+        dll_path = Path(path).resolve()
+        _windows_add_dll_search_paths(dll_path)
+        return ctypes.CDLL(str(dll_path))
     env = os.environ.get("HIK_CODE_READER_DLL")
     if env:
-        return ctypes.CDLL(env)
+        dll_path = Path(env).resolve()
+        _windows_add_dll_search_paths(dll_path)
+        return ctypes.CDLL(str(dll_path))
     bundled = default_native_dll()
     if bundled.is_file():
-        return ctypes.CDLL(str(bundled))
+        dll_path = bundled.resolve()
+        _windows_add_dll_search_paths(dll_path)
+        return ctypes.CDLL(str(dll_path))
+    _windows_add_dll_search_paths(Path("hik_code_reader.dll"))
     return ctypes.CDLL("hik_code_reader.dll")
 
 

@@ -126,9 +126,24 @@ pip install "hik-code-reader==0.1.0" \
 ```python
 from hik_code_reader import HikCodeReader
 
-cr = HikCodeReader()  # wheel 内已带 DLL，一般无需设 HIK_CODE_READER_DLL
+cr = HikCodeReader()  # wheel 内有 hik_code_reader.dll；海康 MvCodeReaderCtrl 等仍依赖本机 RunTime / PATH
 print(cr.enum_devices())
 ```
+
+**pip 安装后提示找不到 DLL / WinError 126 / 0xc0000135**  
+
+wheel 里只有 **`hik_code_reader.dll`**（及 `.lib`），**不包含**海康 **`MvCodeReaderCtrl.dll`** 等运行时库。加载 `hik_code_reader.dll` 时，系统还要能解析这些依赖。
+
+1. 安装与海康文档一致的 **RunTime 3.0.0+（位数与 Python 一致，一般为 64 位）**，并确认安装程序已把 RunTime 的 **Bin** 目录写入系统 **`Path`**；或自行把该目录加入 **`Path`** 后重启终端 / IDE。  
+2. 若不便改全局 `Path`，可在运行 Python **之前**设置（把路径改成你本机 RunTime 下实际目录）：
+
+   ```powershell
+   $env:HIK_CODE_READER_VENDOR_DLL_DIR = "C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64"
+   ```
+
+   （具体文件夹以你机器为准，需包含 **`MvCodeReaderCtrl.dll`**。）包内会在 `ctypes` 加载前对该目录调用 `os.add_dll_directory`（Windows）。
+
+3. 仍失败时，用「依赖查看」工具打开 **`hik_code_reader.dll`**，看还缺哪一个 `.dll`，再对照 RunTime / MVS 安装目录补齐或加入 `Path`。
 
 ### Go 开发者
 
