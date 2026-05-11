@@ -5,6 +5,7 @@
  */
 
 #include "MvCodeReaderCtrl.h"
+#include "MvCodeReaderParams.h"
 #include "code_reader.h"
 #include "code_reader_detail.h"
 #include <memory>
@@ -48,7 +49,7 @@ CodeReader::~CodeReader() {
 /**
  * 枚举在线读码器，填充序列号与 GigE 相关摘要。
  *
- * @return 设备信息列表（仅包含传输层为 GigE 的项；其余类型跳过）。
+ * @return 设备信息列表（GigE 与 USB3 Vision；其余传输层类型当前跳过）。
  * @throws std::runtime_error MV_CODEREADER_EnumCodeReader 失败时抛出
  */
 std::vector<CodeReaderInfo> enumDevice() {
@@ -63,13 +64,19 @@ std::vector<CodeReaderInfo> enumDevice() {
         if (pinfo == nullptr) {
             continue;
         }
-        if (pinfo->nTLayerType != MV_CODEREADER_GIGE_DEVICE) {
+        if (pinfo->nTLayerType == MV_CODEREADER_GIGE_DEVICE) {
+            const MV_CODEREADER_GIGE_DEVICE_INFO &gige = pinfo->SpecialInfo.stGigEInfo;
+            std::string sn = gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber));
+            std::string netExportIp = intToIp(gige.nNetExport);
+            infos.push_back({sn, netExportIp});
             continue;
         }
-        const MV_CODEREADER_GIGE_DEVICE_INFO &gige = pinfo->SpecialInfo.stGigEInfo;
-        std::string sn = gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber));
-        std::string netExportIp = intToIp(gige.nNetExport);
-        infos.push_back({sn, netExportIp});
+        if (pinfo->nTLayerType == MV_CODEREADER_USB_DEVICE) {
+            const MV_CODEREADER_USB3_DEVICE_INFO &usb = pinfo->SpecialInfo.stUsb3VInfo;
+            std::string sn = gigESerialToString(usb.chSerialNumber, sizeof(usb.chSerialNumber));
+            infos.push_back({sn, ""});
+            continue;
+        }
     }
     return infos;
 }
