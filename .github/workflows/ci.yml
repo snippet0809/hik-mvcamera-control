@@ -63,12 +63,24 @@ jobs:
         working-directory: ffi/go
         run: go mod tidy
 
-      - name: Go build hikcr (cgo + MSVC cl)
-        continue-on-error: true
+      # Go cgo 不支持 MSVC cl：编译 runtime/cgo 时会带 -Werror，cl 报 D8021。
+      # 仍用 CMake+MSVC 编 hik_code_reader.dll；此处用 MinGW gcc 编 cgo 胶水并链接 .lib。
+      - name: Install MinGW-w64 (cgo CC)
+        run: choco install mingw -y --no-progress
+
+      - name: Go build hikcr (cgo + gcc, link MSVC-built DLL)
         working-directory: ffi/go
-        env:
-          CGO_ENABLED: "1"
-          CC: cl
-          CGO_CFLAGS: -I${{ github.workspace }}/include
-          CGO_LDFLAGS: -L${{ github.workspace }}/build -lhik_code_reader
-        run: go build -v ./...
+        shell: pwsh
+        run: |
+          $bins = @(
+            'C:\ProgramData\mingw64\mingw64\bin',
+            'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin'
+          )
+          $gccDir = $bins | Where-Object { Test-Path (Join-Path $_ 'gcc.exe') } | Select-Object -First 1
+          if (-not $gccDir) { throw "gcc.exe not found after choco install mingw; checked: $($bins -join ', ')" }
+          $env:Path = "$gccDir;$env:Path"
+          $env:CGO_ENABLED = "1"
+          $env:CC = "gcc"
+          $env:CGO_CFLAGS = "-I${{ github.workspace }}/include"
+          $env:CGO_LDFLAGS = "-L${{ github.workspace }}/build -lhik_code_reader"
+          go build -v ./...

@@ -25,7 +25,7 @@ flowchart TB
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
 - **Python 正式包**：`python/` 下 `build` 打 wheel，构建前将 DLL 拷入 `hik_code_reader/_native/`（CI / 发版流程中完成）。  
-- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库，需在 Windows 上配置好 MSVC 与库路径（见 CI 中示例）。
+- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 CI 与 `go.dev/issue/20982`）。
 
 ### GitHub Actions 在流程中的位置
 
@@ -149,7 +149,7 @@ import "github.com/you/hik-mvcamera-control/ffi/go/hikcr"
 
 **说明**：
 
-- **cgo**：需本机可链接 `hik_code_reader`（Windows 上通常为 MSVC 与 Release 里的 `.lib` / 运行时 `dll`）；**Release** 附件中的 zip 含 `ffi/go` 与 `include/hik_code_reader`，可与同版 `dll`/`lib` 一起用于集成。  
+- **cgo**：需本机可链接 `hik_code_reader`（`.lib` + 运行时 `dll`）；**C 编译器用 MinGW `gcc` 等**，与用 MSVC 编出的 `hik_code_reader.dll` 不矛盾。**Release** 附件中的 zip 含 `ffi/go` 与 `include/hik_code_reader`，可与同版 `dll`/`lib` 一起用于集成。  
 - **私有仓库**：  
   `go env -w GOPRIVATE=github.com/you/*`  
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。

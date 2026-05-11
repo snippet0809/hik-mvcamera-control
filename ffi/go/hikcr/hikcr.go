@@ -3,7 +3,7 @@
 //
 // 构建示例（按实际路径修改）：
 //
-//	# PowerShell
+//	# PowerShell（cgo 的 CC 请用 MinGW gcc，勿设 cl；见 https://go.dev/issue/20982）
 //	$env:CGO_CFLAGS="-I$PWD/include"
 //	$env:CGO_LDFLAGS="-L$PWD/build -lhik_code_reader"
 //	go build ./ffi/go/hikcr
