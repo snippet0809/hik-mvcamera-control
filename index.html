@@ -493,7 +493,7 @@ print(cr.enum_devices())
 <h2>构建要求</h2>
 <ul>
 <li><strong>CMake</strong> 4.0 及以上（见根目录 <code>CMakeLists.txt</code>）。</li>
-<li>支持 C++17 或项目所用特性的 <strong>MSVC</strong>（当前工程通过 <code>FetchContent</code> 拉取 <strong>GoogleTest</strong> 与 <strong>{fmt}</strong>）。</li>
+<li>支持 C++17 或项目所用特性的 <strong>MSVC</strong>（当前工程通过 <code>FetchContent</code> 拉取 <strong>GoogleTest</strong>）。</li>
 <li><strong>Windows</strong>：默认链接 <code>lib/MvCodeReader/win64/MvCodeReaderCtrl.lib</code>；若在 32 位环境构建，需自行将 CMake 中的库路径改为 <code>win32</code> 对应文件。</li>
 </ul>
 <h2>构建与测试</h2>
@@ -501,7 +501,7 @@ print(cr.enum_devices())
 cmake --build build --config Release
 ctest --test-dir build -C Release
 </code></pre>
-<p>首次配置会从网络下载 GTest 与 fmt；需保证构建环境可访问 GitHub。</p>
+<p>首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。</p>
 <p>产物说明：</p>
 <ul>
 <li><strong><code>hik_code_reader_static.lib</code></strong>：静态库，供 <code>all_tests</code> 等链接。</li>
@@ -515,7 +515,7 @@ ctest --test-dir build -C Release
 <li>将 SDK 提供的 <strong>DLL</strong>（若静态链仍依赖运行时）放在可执行文件同目录或系统 <code>PATH</code> 中，按官方文档为准。</li>
 </ol>
 <h2>许可证与第三方</h2>
-<p>海康威视 <strong>MvCamera / MvCodeReader</strong> SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest、{fmt} 遵循各自开源协议（由 CMake <code>FetchContent</code> 获取）。</p>
+<p>海康威视 <strong>MvCamera / MvCodeReader</strong> SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest 遵循其开源协议（由 CMake <code>FetchContent</code> 获取）。</p>
 <h2>相关文档</h2>
 <ul>
 <li>读码器开发说明可参考仓库内 <code>.docs</code> 下文档及 <code>include/MvCodeReader</code> 头文件中的 API 定义。</li>
