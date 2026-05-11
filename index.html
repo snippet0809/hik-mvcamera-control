@@ -501,6 +501,10 @@ print(cr.enum_devices())
 cmake --build build --config Release
 ctest --test-dir build -C Release
 </code></pre>
+<p><strong>CI / 无 VS2022 生成器时</strong>可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 <code>build/hik_code_reader.dll</code>）：</p>
+<pre><code class="language-powershell">cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+</code></pre>
 <p>首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。</p>
 <p>产物说明：</p>
 <ul>
