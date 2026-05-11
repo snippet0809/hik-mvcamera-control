@@ -116,8 +116,10 @@ target_link_libraries(all_tests PRIVATE
 )
 
 # 向 CTest 注册每个 TEST() 用例，便于 ctest -R 筛选、IDE 里单独跑某条测试。
+# PRE_TEST：在运行 ctest 时再发现用例；若用 POST_BUILD，构建阶段会执行 all_tests.exe，
+# 链了海康库时易因缺运行库报 0xc0000135（STATUS_DLL_NOT_FOUND），CI 仅 cmake --build 也会失败。
 include(GoogleTest)
-gtest_discover_tests(all_tests)
+gtest_discover_tests(all_tests DISCOVERY_MODE PRE_TEST)
 
 # -----------------------------------------------------------------------------
 # clangd / Cursor：仓库根目录 compile_commands.json
