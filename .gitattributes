@@ -1,0 +1,4 @@
+# Windows runners often use core.autocrlf=true; gofmt requires LF in working tree.
+*.go   text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
