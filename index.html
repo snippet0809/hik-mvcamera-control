@@ -211,8 +211,8 @@
       <h1>hik-mvcamera-control</h1>
       <p class="hero-lead">围绕海康机器人 机器视觉 SDK 的本地封装与工程骨架：仓库中已包含 读码器（MvCodeReader） 的头文件与静态库，当前 src 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 稳定 C ABI（include/hik_code_reader/c_api.h + c_api.cpp），便于 Python（ctypes） 与 Go（cgo） 等语言加载 hik_code_reader 共享库调用。include/lib 下同时提供了 工业相机（MvCamera） 相关 SDK 文件，便于后续扩展相机侧逻辑。</p>
       <div class="meta">
-        <span class="pill">Release v0.0.1</span>
-        <span>与发版 v0.0.1 同步；Python 包见 pip 索引（PEP 503）。文档区随 README 更新。</span>
+        <span class="pill">main</span>
+        <span>README 变更后自动刷新；pip 索引在发版时更新。</span>
       </div>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://snippet0809.github.io/hik-mvcamera-control/simple/hik-code-reader/">pip 索引（PEP 503）· hik-code-reader</a>
@@ -522,11 +522,35 @@ cmake --build build
 <li>GigE 设备注意网卡、防火墙与网段；改 IP 前须 <code>openDeviceForParameters</code> 使设备处于 <strong>Open</strong>，并阅读 <code>setIp</code> 注释（改 IP 后设备常重启，本地句柄会被移除）。</li>
 <li>将 SDK 提供的 <strong>DLL</strong>（若静态链仍依赖运行时）放在可执行文件同目录或系统 <code>PATH</code> 中，按官方文档为准。</li>
 </ol>
+<h3>读码器 SDK 使用要点（与 <code>.docs</code> 开发指南 CHM 一致）</h3>
+<p>以下摘要自海康读码器 <strong>SDK 开发指南</strong>，使用本封装或直连 <code>MvCodeReader</code> 前请一并遵守：</p>
+<ol>
+<li><strong>GigE 网口巨帧</strong>：使用前需先在网卡上开启 <strong>巨帧（Jumbo Frame）</strong>，否则大包/高负载下易丢包或异常。  </li>
+<li><strong>RunTime 包</strong>：需安装与目标程序 <strong>位数一致</strong>（32 位 / 64 位）的 <strong>工业相机 SDK RunTime</strong>，且版本为 <strong>RunTime 3.0.0 及以上</strong>。  </li>
+<li><strong>回调与轮询互斥</strong>：<strong>回调类接口</strong>与 <strong>轮询类接口</strong>不能同时用来取图；二者二选一，不可混用。  </li>
+<li><strong>多路回调</strong>：对指定流通道调用底层 <strong><code>MV_CODEREADER_MSC_RegisterImageCallBack()</code></strong> 可注册回调；可对多路流通道分别注册，以同时获取多路图像与条码结果。  </li>
+<li><strong>多路轮询</strong>：<strong><code>MV_CODEREADER_MSC_GetOneFrameTimeout()</code></strong> 可按通道轮询取图；可对多路流通道分别轮询，以同时获取多路数据。</li>
+</ol>
+<p>本仓库 C++ 封装在取流路径上主要采用 <strong>回调</strong> 模式（如 BCR 回调）；若你在同进程内再调官方 <strong>轮询</strong> 接口，须遵守上述互斥约定。更细的参数与流程以 <strong>CHM / 官方 PDF</strong> 为准。</p>
+<h3>Windows：RunTime 位置与「环境变量」说明</h3>
+<p>海康 <strong>MVS / IDMVS / RunTime</strong> 安装程序通常不会单独约定一个在头文件里写死的变量名（如 <code>MV_SDK_ROOT</code>），而是把 <strong>若干目录追加到系统或用户的 <code>PATH</code></strong>，让 <code>LoadLibrary</code> / DLL 依赖解析能找到 <code>MvCodeReaderCtrl.dll</code>、<code>MVIDCodeReader.dll</code> 等及依赖链。</p>
+<p><strong>请你本机自查 PATH 里与厂商相关的项</strong>（在 PowerShell 中执行，合并查看用户级与机器级）：</p>
+<pre><code class="language-powershell">('Machine','User') | ForEach-Object {
+  [Environment]::GetEnvironmentVariable('Path', $_) -split ';' |
+    Where-Object { $_ -match '(?i)MVS|MvCode|IDMVS|Hik|HIKROBOT|Runtime|Common Files\\MVS' }
+} | Sort-Object -Unique
+</code></pre>
+<p>常见会出现的路径形态（<strong>仅供参考，以你机器上安装版本为准</strong>）：</p>
+<ul>
+<li>含 <strong><code>Common Files\MVS\Runtime</code></strong> 或 <strong><code>Runtime\Win64</code></strong> 等字样的目录（独立 RunTime 包或套件附带）。  </li>
+<li>含 <strong><code>MVS</code></strong>、<strong><code>Development</code></strong>、<strong><code>Bin\win64</code></strong>（完整开发包）或 <strong>读码器 / IDMVS</strong> 安装目录下的 <strong><code>Bin</code></strong>。</li>
+</ul>
+<p>若进程仍报 <strong>找不到 DLL / 0xc0000135</strong>：除检查 <code>PATH</code> 外，还可把缺失的 DLL 放到 <strong><code>hik_code_reader.dll</code> 同目录</strong>，或确认与 <strong>RunTime 3.0.0+</strong> 及 <strong>x64/x86 位数</strong> 一致。</p>
 <h2>许可证与第三方</h2>
 <p>海康威视 <strong>MvCamera / MvCodeReader</strong> SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest 遵循其开源协议（由 CMake <code>FetchContent</code> 获取）。</p>
 <h2>相关文档</h2>
 <ul>
-<li>读码器开发说明可参考仓库内 <code>.docs</code> 下文档及 <code>include/MvCodeReader</code> 头文件中的 API 定义。</li>
+<li>读码器开发说明可参考仓库内 <strong><code>.docs</code></strong> 下 <strong>CHM（读码器 SDK 开发指南）</strong> 及 <strong><code>include/MvCodeReader</code></strong> 头文件中的 API 定义（如 <code>MV_CODEREADER_MSC_*</code>）。</li>
 </ul>
     </section>
   </main>
