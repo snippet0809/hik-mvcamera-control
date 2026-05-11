@@ -8,7 +8,8 @@ version = "0.0.1"
 description = "ctypes bindings for Hikrobot code reader (MvCodeReader) C API — Windows x64 wheel ships native DLL"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary — see repository; Hikvision SDK terms apply" }
+# SPDX 表达式（setuptools 弃用 table 形式 license）；具体说明见仓库 README / 海康 SDK 许可。
+license = "LicenseRef-Proprietary"
 authors = [{ name = "hik-mvcamera-control contributors" }]
 classifiers = [
   "Programming Language :: Python :: 3",
