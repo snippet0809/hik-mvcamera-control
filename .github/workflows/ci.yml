@@ -37,11 +37,12 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
-      - name: Stage DLL for Python wheel
+      - name: Stage native artifacts for Python wheel
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path python/hik_code_reader/_native | Out-Null
           Copy-Item -Force "build/hik_code_reader.dll" "python/hik_code_reader/_native/"
+          Copy-Item -Force "lib/MvCodeReader/win64/*.lib" "python/hik_code_reader/_native/"
 
       - name: Build wheel
         run: |

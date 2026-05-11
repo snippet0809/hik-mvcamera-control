@@ -24,7 +24,7 @@ flowchart TB
 ```
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
-- **Python 正式包**：`python/` 下 `build` 打 wheel，构建前将 DLL 拷入 `hik_code_reader/_native/`（CI / 发版流程中完成）。  
+- **Python 正式包**：`python/` 下 `build` 打 wheel，构建前将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`（CI / 发版流程中完成；wheel 内同时带 DLL 与厂商导入库，便于再链原生代码）。  
 - **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 CI 与 `go.dev/issue/20982`）。
 
 ### GitHub Actions 在流程中的位置
@@ -75,8 +75,8 @@ GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代
 2. 创建并推送 **语义化标签**（必须以 `v` 开头）：  
    `git tag v0.1.0 && git push origin v0.1.0`  
 3. **GitHub Actions** 中 **`Release`** 工作流（`release.yml`）会自动：  
-   - 将 **`python/pyproject.toml` 里的 `version`** 改成与标签一致（去掉 `v`，如 `v0.1.0` → `0.1.0`），再构建 **Windows x64 wheel**（内含 `hik_code_reader.dll`）；  
-   - 创建/更新 **GitHub Release**，并上传 wheel、Go/cgo 用 zip、`dll`、`lib`；  
+   - 将 **`python/pyproject.toml` 里的 `version`** 改成与标签一致（去掉 `v`，如 `v0.1.0` → `0.1.0`），再构建 **Windows x64 wheel**（`_native/` 内含 `hik_code_reader.dll` 与海康 `MvCodeReaderCtrl.lib` / `turbojpeg.lib`）；  
+   - 创建/更新 **GitHub Release**，并上传 wheel、Go/cgo 用 zip（含 `lib/MvCodeReader/win64`）、`hik_code_reader.dll`、`hik_code_reader.lib` 及上述厂商 `.lib`；  
    - 生成 **PEP 503** 页面并推送到 **`gh-pages`**（与已有索引合并，保留历史版本链接）；  
    - 在同一提交上自动创建 **`ffi/go/v0.1.0`** 标签（若不存在），供 `go get` 使用。
 
@@ -171,7 +171,7 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 |------|------|
 | `src/code_reader/` | 读码器 C++ 封装实现（`code_reader.h`、`c_api.cpp` 等） |
 | `include/hik_code_reader/` | **C ABI 头文件**（`c_api.h`），供 Python/Go 等包含 |
-| `python/` | **`hik-code-reader`** 包与 `pyproject.toml`（wheel 内含 `_native/hik_code_reader.dll`） |
+| `python/` | **`hik-code-reader`** 包与 `pyproject.toml`（wheel 的 `_native/` 含 DLL 与海康 win64 导入库） |
 | `ffi/python/` | ctypes 参考实现（与 `python/hik_code_reader` 保持同步为佳） |
 | `ffi/go/` | Go 子模块（`go.mod`）；包目录 `hikcr` |
 | `include/MvCamera/`、`include/MvCodeReader/` | 海康 SDK 头文件 |

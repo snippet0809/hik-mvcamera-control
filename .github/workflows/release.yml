@@ -47,11 +47,12 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
-      - name: Stage DLL for Python wheel
+      - name: Stage native artifacts for Python wheel
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path python/hik_code_reader/_native | Out-Null
           Copy-Item -Force "build/hik_code_reader.dll" "python/hik_code_reader/_native/"
+          Copy-Item -Force "lib/MvCodeReader/win64/*.lib" "python/hik_code_reader/_native/"
 
       - name: Build wheel
         run: |
@@ -64,7 +65,7 @@ jobs:
         run: |
           $ver = "${{ github.ref_name }}"
           $zip = "hik-mvcamera-control-ffi-go-$ver.zip"
-          Compress-Archive -Path "ffi/go", "include/hik_code_reader" -DestinationPath "python/dist/$zip"
+          Compress-Archive -Path "ffi/go", "include/hik_code_reader", "lib/MvCodeReader/win64" -DestinationPath "python/dist/$zip"
 
       - name: Assemble release assets
         shell: pwsh
@@ -73,6 +74,7 @@ jobs:
           Copy-Item -Force "python/dist/*" "publish/"
           Copy-Item -Force "build/hik_code_reader.dll" "publish/"
           Copy-Item -Force "build/hik_code_reader.lib" "publish/"
+          Copy-Item -Force "lib/MvCodeReader/win64/*.lib" "publish/"
           Get-ChildItem publish
 
       - id: wheelmeta

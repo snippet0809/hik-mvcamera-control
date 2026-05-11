@@ -29,4 +29,5 @@ where = ["."]
 include = ["hik_code_reader*"]
 
 [tool.setuptools.package-data]
-hik_code_reader = ["_native/*.dll", "_native/.gitkeep"]
+# DLL：运行时；*.lib：海康读码器 SDK 导入库（及 turbojpeg），便于在本机链其它原生代码；许可以海康为准。
+hik_code_reader = ["_native/*.dll", "_native/*.lib", "_native/.gitkeep"]
