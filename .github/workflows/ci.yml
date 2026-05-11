@@ -49,9 +49,11 @@ jobs:
           python -m build --wheel --outdir dist .
         working-directory: python
 
+      # 默认在仓库根找 go.sum；本模块在 ffi/go 且无第三方依赖，不会生成 go.sum → 关缓存以免 Restore cache failed 警告。
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22.x"
+          cache: false
 
       - name: gofmt (ffi/go)
         shell: bash
