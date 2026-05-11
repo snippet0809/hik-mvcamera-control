@@ -279,7 +279,7 @@
 </code></pre>
 <ul>
 <li><strong>构建</strong>：根目录 <strong>CMake</strong> 生成静态库、测试与 <strong>共享库</strong>（目标名见 <code>CMakeLists.txt</code>）。  </li>
-<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，构建前将 DLL 拷入 <code>hik_code_reader/_native/</code>（CI / 发版流程中完成）。  </li>
+<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，构建前将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>（CI / 发版流程中完成；wheel 内同时带 DLL 与厂商导入库，便于再链原生代码）。  </li>
 <li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库；<strong>DLL 仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 CI 与 <code>go.dev/issue/20982</code>）。</li>
 </ul>
 <h3>GitHub Actions 在流程中的位置</h3>
@@ -365,8 +365,8 @@
 <li>创建并推送 <strong>语义化标签</strong>（必须以 <code>v</code> 开头）：<br />
 <code>git tag v0.1.0 &amp;&amp; git push origin v0.1.0</code>  </li>
 <li><strong>GitHub Actions</strong> 中 <strong><code>Release</code></strong> 工作流（<code>release.yml</code>）会自动：  </li>
-<li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.1.0</code> → <code>0.1.0</code>），再构建 <strong>Windows x64 wheel</strong>（内含 <code>hik_code_reader.dll</code>）；  </li>
-<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、Go/cgo 用 zip、<code>dll</code>、<code>lib</code>；  </li>
+<li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.1.0</code> → <code>0.1.0</code>），再构建 <strong>Windows x64 wheel</strong>（<code>_native/</code> 内含 <code>hik_code_reader.dll</code> 与海康 <code>MvCodeReaderCtrl.lib</code> / <code>turbojpeg.lib</code>）；  </li>
+<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、Go/cgo 用 zip（含 <code>lib/MvCodeReader/win64</code>）、<code>hik_code_reader.dll</code>、<code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>；  </li>
 <li>生成 <strong>PEP 503</strong> 页面并推送到 <strong><code>gh-pages</code></strong>（与已有索引合并，保留历史版本链接）；  </li>
 <li>在同一提交上自动创建 <strong><code>ffi/go/v0.1.0</code></strong> 标签（若不存在），供 <code>go get</code> 使用。</li>
 </ol>
@@ -466,7 +466,7 @@ print(cr.enum_devices())
 </tr>
 <tr>
 <td><code>python/</code></td>
-<td><strong><code>hik-code-reader</code></strong> 包与 <code>pyproject.toml</code>（wheel 内含 <code>_native/hik_code_reader.dll</code>）</td>
+<td><strong><code>hik-code-reader</code></strong> 包与 <code>pyproject.toml</code>（wheel 的 <code>_native/</code> 含 DLL 与海康 win64 导入库）</td>
 </tr>
 <tr>
 <td><code>ffi/python/</code></td>
