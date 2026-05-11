@@ -72,6 +72,22 @@ def default_native_dll() -> Path:
     return Path(__file__).resolve().parent / "_native" / "hik_code_reader.dll"
 
 
+def _effective_native_dll_path() -> Path | None:
+    """实际用于加载的 ``hik_code_reader.dll``：优先 wheel 的 ``_native``，否则尝试仓库根下 CMake 产物（``pip install -e`` 开发时常未拷 DLL）。"""
+    p = default_native_dll()
+    if p.is_file():
+        return p
+    repo_root = Path(__file__).resolve().parents[2]
+    for cand in (
+        repo_root / "build" / "hik_code_reader.dll",
+        repo_root / "build" / "Release" / "hik_code_reader.dll",
+        repo_root / "build-ninja" / "hik_code_reader.dll",
+    ):
+        if cand.is_file():
+            return cand
+    return None
+
+
 def _is_64bit_python() -> bool:
     return sys.maxsize > 2**32
 
@@ -317,11 +333,14 @@ def _cdll_win(path: str) -> ctypes.CDLL:
 def diagnose_runtime_search_context() -> dict[str, object]:
     """自助诊断：bundled DLL、探测到的 MvCodeReader 目录、PATH 前缀（便于核对与海康 Runtime 是否衔接）。"""
     bundled = default_native_dll()
+    eff = _effective_native_dll_path()
     discovered = [str(p.resolve()) for p in _mvcode_runtime_dirs_discovered() if p.is_dir()]
     path_head = os.environ.get("PATH", "")[:800]
     return {
         "bundled_hik_code_reader_dll": str(bundled),
         "bundled_exists": bundled.is_file(),
+        "effective_hik_code_reader_dll": str(eff) if eff else "",
+        "effective_exists": eff.is_file() if eff else False,
         "mvcode_runtime_dirs": discovered,
         "path_env_prefix_800chars": path_head,
     }
@@ -335,10 +354,17 @@ def diagnose_windows_native_load() -> list[dict[str, str | bool]]:
     """
     if os.name != "nt":
         return [{"strategy": "skip-non-windows", "ok": True, "error": ""}]
-    bundled = default_native_dll()
-    if not bundled.is_file():
-        return [{"strategy": "bundled-missing", "ok": False, "error": str(bundled)}]
-    dll_path = bundled.resolve()
+    eff = _effective_native_dll_path()
+    if eff is None:
+        b = default_native_dll()
+        return [
+            {
+                "strategy": "hik_code_reader.dll-missing",
+                "ok": False,
+                "error": f"无 wheel _native 且无 CMake 产物: {b}",
+            }
+        ]
+    dll_path = eff.resolve()
     _windows_prepare_dll_search_path(dll_path)
     spath = str(dll_path)
     specs: list[tuple[str, int | None]] = [
@@ -372,9 +398,9 @@ def _load_dll(path: str | None) -> ctypes.CDLL:
     env = os.environ.get("HIK_CODE_READER_DLL")
     if env:
         return load_at(Path(env))
-    bundled = default_native_dll()
-    if bundled.is_file():
-        return load_at(bundled)
+    eff = _effective_native_dll_path()
+    if eff is not None:
+        return load_at(eff)
     if os.name == "nt":
         _windows_prepare_dll_search_path(Path.cwd() / "hik_code_reader.dll")
         return _cdll_win("hik_code_reader.dll")
