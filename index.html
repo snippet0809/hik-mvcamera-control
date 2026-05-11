@@ -211,8 +211,8 @@
       <h1>hik-mvcamera-control</h1>
       <p class="hero-lead">围绕海康机器人 机器视觉 SDK 的本地封装与工程骨架：仓库中已包含 读码器（MvCodeReader） 的头文件与静态库，当前 src 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 稳定 C ABI（include/hik_code_reader/c_api.h + c_api.cpp），便于 Python（ctypes） 与 Go（cgo） 等语言加载 hik_code_reader 共享库调用。include/lib 下同时提供了 工业相机（MvCamera） 相关 SDK 文件，便于后续扩展相机侧逻辑。</p>
       <div class="meta">
-        <span class="pill">Release v0.0.1</span>
-        <span>与发版 v0.0.1 同步；Python 包见 pip 索引（PEP 503）。文档区随 README 更新。</span>
+        <span class="pill">main</span>
+        <span>README 变更后自动刷新；pip 索引在发版时更新。</span>
       </div>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://snippet0809.github.io/hik-mvcamera-control/simple/hik-code-reader/">pip 索引（PEP 503）· hik-code-reader</a>
@@ -381,22 +381,26 @@
 <h2>开发者使用指南</h2>
 <p>以下示例以本仓库 <code>github.com/snippet0809/hik-mvcamera-control</code> 为准；若你 fork 或改名，请替换路径中的用户名与仓库名。</p>
 <h3>Python 开发者</h3>
-<p><strong>环境</strong>：当前 wheel 为 <strong>Windows x64</strong>，需在对应环境安装。</p>
-<p><strong>方式 A（推荐，像用「私有 PyPI 源」一样）</strong><br />
-在维护者已开启 <strong>Pages</strong> 且发过版的前提下：</p>
+<p><strong>环境</strong>：当前 wheel 为 <strong>Windows x64</strong>（文件名中含 <strong><code>win_amd64</code></strong>），需在对应环境安装。</p>
+<p><strong>方式 A：从 GitHub Release 直链安装 wheel（不依赖 Pages，最省事）</strong>  </p>
+<ol>
+<li>打开本仓库 <strong><a href="https://github.com/snippet0809/hik-mvcamera-control/releases">Releases</a></strong>，选择对应版本（如 <strong><code>v0.0.1</code></strong>）。  </li>
+<li>在 <strong>Assets</strong> 里找到 <strong><code>hik_code_reader-…-py3-none-win_amd64.whl</code></strong>，复制其「直链」；或直接使用与 tag、版本一致的 URL（<strong>tag 带 <code>v</code>，包版本号无 <code>v</code></strong>）：</li>
+</ol>
+<pre><code class="language-bash">pip install &quot;https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.0.1/hik_code_reader-0.0.1-py3-none-win_amd64.whl&quot;
+</code></pre>
+<p>其它版本请把 URL 中的 <strong><code>v0.0.1</code></strong> / <strong><code>0.0.1</code></strong> 换成你的 tag 与 <code>pyproject</code> 版本；<strong>wheel 完整文件名以该 Release 页 Assets 为准</strong>。</p>
+<p><strong>方式 B：像「私有 PyPI 源」一样用 PEP 503（依赖 Pages）</strong><br />
+在维护者已开启 <strong>GitHub Pages</strong>（<code>gh-pages</code>）且发过版的前提下：</p>
 <pre><code class="language-bash">pip install &quot;hik-code-reader==0.1.0&quot; \
   --index-url &quot;https://snippet0809.github.io/hik-mvcamera-control/simple/&quot; \
   --trusted-host &quot;snippet0809.github.io&quot;
 </code></pre>
 <ul>
 <li>版本号 <strong><code>0.1.0</code></strong> 与 Git 标签 <strong><code>v0.1.0</code></strong> 对应（无 <code>v</code>）。  </li>
-<li><code>--trusted-host</code> 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。</li>
+<li><code>--trusted-host</code> 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。  </li>
+<li>首次如何开 Pages、索引如何生成，见上文 <strong>「在 GitHub 上托管分发」</strong> 与 <strong>README</strong> 中维护者章节。</li>
 </ul>
-<p><strong>方式 B（不依赖 Pages，直链 wheel）</strong><br />
-在 <strong>Releases</strong> 中复制对应版本的 <code>.whl</code> 下载地址：</p>
-<pre><code class="language-bash">pip install &quot;https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.1.0/hik_code_reader-0.1.0-py3-none-win_amd64.whl&quot;
-</code></pre>
-<p>（文件名随版本变化，以 Release 页为准。）</p>
 <p><strong>代码示例</strong>：</p>
 <pre><code class="language-python">from hik_code_reader import HikCodeReader
 
