@@ -14,6 +14,13 @@ package hikcr
 
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"
+
+// Return the //export callback as HikCrBcrCallback. Do not use C.hikcrGoBcrShim from Go — cgo does not
+// resolve exported Go symbols there (go#19837: "could not determine kind of name for C.hikcrGoBcrShim").
+HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
+	extern void hikcrGoBcrShim();
+	return (HikCrBcrCallback)hikcrGoBcrShim;
+}
 */
 import "C"
 
@@ -144,7 +151,7 @@ func RegisterBcrCallback(fn func([]string)) error {
 	bcrMu.Unlock()
 	var cb C.HikCrBcrCallback
 	if fn != nil {
-		cb = C.hikcrGoBcrShim
+		cb = C.hikcr_wrap_bcr_shim()
 	}
 	return check(C.hik_cr_register_bcr_callback(cb, nil))
 }
