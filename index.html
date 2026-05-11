@@ -410,14 +410,9 @@ print(cr.enum_devices())
 <p><strong>pip 安装后提示找不到 DLL / WinError 126 / 0xc0000135</strong>  </p>
 <p>wheel 里只有 <strong><code>hik_code_reader.dll</code></strong>（及 <code>.lib</code>），<strong>不包含</strong>海康 <strong><code>MvCodeReaderCtrl.dll</code></strong> 等运行时库。加载 <code>hik_code_reader.dll</code> 时，系统还要能解析这些依赖。</p>
 <ol>
-<li>安装与海康文档一致的 <strong>RunTime 3.0.0+（位数与 Python 一致，一般为 64 位）</strong>，并确认安装程序已把 RunTime 的 <strong>Bin</strong> 目录写入系统 <strong><code>Path</code></strong>；或自行把该目录加入 <strong><code>Path</code></strong> 后重启终端 / IDE。  </li>
-<li>若不便改全局 <code>Path</code>，可在运行 Python <strong>之前</strong>设置（把路径改成你本机 RunTime 下实际目录）：</li>
-</ol>
-<p><code>powershell
-   $env:HIK_CODE_READER_VENDOR_DLL_DIR = "C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64"</code></p>
-<p>（具体文件夹以你机器为准，需包含 <strong><code>MvCodeReaderCtrl.dll</code></strong>。）包内会在 <code>ctypes</code> 加载前对该目录调用 <code>os.add_dll_directory</code>（Windows）。</p>
-<ol>
-<li>仍失败时，用「依赖查看」工具打开 <strong><code>hik_code_reader.dll</code></strong>，看还缺哪一个 <code>.dll</code>，再对照 RunTime / MVS 安装目录补齐或加入 <code>Path</code>。</li>
+<li>安装 <strong>MVS RunTime 3.0.0+</strong> 与/或 <strong>IDMVS</strong>（位数与 Python 一致，一般为 64 位），让安装程序写入 <strong><code>Path</code></strong> 及海康常用变量（如 <strong><code>GENICAM_GENTL64_PATH</code></strong>、<strong><code>MVCAM_GENICAM_CLPROTOCOL</code></strong> 等）。  </li>
+<li><strong>Python 包（Windows）</strong>在 <code>ctypes</code> 加载前会按 <strong><code>GENICAM_GENTL64_PATH</code> / <code>GENICAM_GENTL32_PATH</code></strong>（随解释器位数）、<strong><code>MVCAM_GENICAM_CLPROTOCOL</code></strong>，以及 <strong><code>Path</code></strong> 中含 <strong><code>MVS</code> / <code>IDMVS</code> / <code>MvSDK</code> / <code>MvCode</code></strong> 的目录依次调用 <code>os.add_dll_directory</code>，与 IDMVS 自动配置的典型环境一致（<strong>不引入本仓库自定义的「海康路径」环境变量名</strong>）。  </li>
+<li>若仍失败：确认上述变量在 <strong>启动 Python 的进程</strong>里可见（同一终端 <code>echo %GENICAM_GENTL64_PATH%</code> / PowerShell <code>$env:GENICAM_GENTL64_PATH</code>）；或用依赖查看工具打开 <strong><code>hik_code_reader.dll</code></strong> 核对缺失的 <code>.dll</code>。</li>
 </ol>
 <h3>Go 开发者</h3>
 <p><strong>模块路径</strong>（须与仓库 <code>go.mod</code> 一致）：</p>
@@ -545,12 +540,22 @@ cmake --build build
 </ol>
 <p>本仓库 C++ 封装在取流路径上主要采用 <strong>回调</strong> 模式（如 BCR 回调）；若你在同进程内再调官方 <strong>轮询</strong> 接口，须遵守上述互斥约定。更细的参数与流程以 <strong>CHM / 官方 PDF</strong> 为准。</p>
 <h3>Windows：RunTime 位置与「环境变量」说明</h3>
-<p>海康 <strong>MVS / IDMVS / RunTime</strong> 安装程序通常不会单独约定一个在头文件里写死的变量名（如 <code>MV_SDK_ROOT</code>），而是把 <strong>若干目录追加到系统或用户的 <code>PATH</code></strong>，让 <code>LoadLibrary</code> / DLL 依赖解析能找到 <code>MvCodeReaderCtrl.dll</code>、<code>MVIDCodeReader.dll</code> 等及依赖链。</p>
-<p><strong>请你本机自查 PATH 里与厂商相关的项</strong>（在 PowerShell 中执行，合并查看用户级与机器级）：</p>
+<p>海康 <strong>MVS / IDMVS / RunTime</strong> 安装器一般会同时：</p>
+<ul>
+<li>写入 <strong><code>PATH</code></strong>（RunTime、<code>IDMVS\...\MvSDK</code> 等）；  </li>
+<li>写入 <strong>GenICam / MVS 相关变量</strong>（示例，以你机为准）：<strong><code>GENICAM_GENTL64_PATH</code></strong>、<strong><code>GENICAM_GENTL32_PATH</code></strong>、<strong><code>MVCAM_GENICAM_CLPROTOCOL</code></strong> 等。</li>
+</ul>
+<p><strong><code>python/hik_code_reader</code></strong> 在 Windows 上会读取上述 <strong>路径型官方变量</strong> 及 <strong><code>Path</code></strong> 中的 MVS/IDMVS 相关目录，用于 <code>os.add_dll_directory</code>（见包内实现）。仍仅保留本仓库自有的 <strong><code>HIK_CODE_READER_DLL</code></strong>（仅指向 <strong><code>hik_code_reader.dll</code></strong> 本身，可选）。</p>
+<p><strong>自查 PATH 里与厂商相关的项</strong>（PowerShell，合并用户级与机器级）：</p>
 <pre><code class="language-powershell">('Machine','User') | ForEach-Object {
   [Environment]::GetEnvironmentVariable('Path', $_) -split ';' |
     Where-Object { $_ -match '(?i)MVS|MvCode|IDMVS|Hik|HIKROBOT|Runtime|Common Files\\MVS' }
 } | Sort-Object -Unique
+</code></pre>
+<p><strong>自查海康常见路径型环境变量</strong>（当前进程继承的安装器配置）：</p>
+<pre><code class="language-powershell">'GENICAM_GENTL64_PATH','GENICAM_GENTL32_PATH','MVCAM_GENICAM_CLPROTOCOL' | ForEach-Object {
+  &quot;${_}=$([Environment]::GetEnvironmentVariable($_,'Process'))&quot;
+}
 </code></pre>
 <p>常见会出现的路径形态（<strong>仅供参考，以你机器上安装版本为准</strong>）：</p>
 <ul>
