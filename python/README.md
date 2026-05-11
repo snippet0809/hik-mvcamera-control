@@ -4,6 +4,8 @@ Windows x64 **wheel** 在 `hik_code_reader/_native/` 内含 **`hik_code_reader.d
 
 本地打 wheel 与 CI「Stage native artifacts」一致：仅拷 `hik_code_reader.dll` 与 `lib/MvCodeReader/win64/*.lib`。
 
+**自检（本机已装海康 Runtime）**：`pip install -e .` 后执行 `python -m hik_code_reader`；短会话联机可设 `HIK_CR_SELFTEST_LIVE=1`。
+
 ```python
 from hik_code_reader import HikCodeReader
 cr = HikCodeReader()

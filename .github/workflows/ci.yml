@@ -50,6 +50,18 @@ jobs:
           python -m build --wheel --outdir dist .
         working-directory: python
 
+      - name: Python unittest + selftest (wheel; hosted runner 常无海康 Runtime)
+        shell: pwsh
+        working-directory: python
+        continue-on-error: true
+        run: |
+          $whl = Get-ChildItem dist\*.whl | Select-Object -First 1
+          if (-not $whl) { throw "no wheel" }
+          python -m pip install "$($whl.FullName)"
+          python -m unittest discover -s tests -p "test*.py" -v
+          $env:HIK_CR_SELFTEST_RELAXED = "1"
+          python -m hik_code_reader
+
       # 默认在仓库根找 go.sum；本模块在 ffi/go 且无第三方依赖，不会生成 go.sum → 关缓存以免 Restore cache failed 警告。
       - uses: actions/setup-go@v5
         with:

@@ -43,6 +43,8 @@ __all__ = [
     "HIK_CR_OK",
     "HIK_CR_SERIAL_MAX",
     "default_native_dll",
+    "diagnose_runtime_search_context",
+    "diagnose_windows_native_load",
 ]
 
 HIK_CR_SERIAL_MAX = 256
@@ -310,6 +312,51 @@ def _cdll_win(path: str) -> ctypes.CDLL:
     if last is not None:
         raise last
     return ctypes.CDLL(path)
+
+
+def diagnose_runtime_search_context() -> dict[str, object]:
+    """自助诊断：bundled DLL、探测到的 MvCodeReader 目录、PATH 前缀（便于核对与海康 Runtime 是否衔接）。"""
+    bundled = default_native_dll()
+    discovered = [str(p.resolve()) for p in _mvcode_runtime_dirs_discovered() if p.is_dir()]
+    path_head = os.environ.get("PATH", "")[:800]
+    return {
+        "bundled_hik_code_reader_dll": str(bundled),
+        "bundled_exists": bundled.is_file(),
+        "mvcode_runtime_dirs": discovered,
+        "path_env_prefix_800chars": path_head,
+    }
+
+
+def diagnose_windows_native_load() -> list[dict[str, str | bool]]:
+    """在已执行与 ``HikCodeReader`` 相同的 ``PATH``/``add_dll_directory`` 准备后，逐策略尝试 ``CDLL``。
+
+    用于判断失败点是「找不到 hik_code_reader.dll」还是「其依赖（如 MvCodeReaderCtrl.dll）」、以及哪种
+    ``LoadLibraryEx`` 标志在本机可用。
+    """
+    if os.name != "nt":
+        return [{"strategy": "skip-non-windows", "ok": True, "error": ""}]
+    bundled = default_native_dll()
+    if not bundled.is_file():
+        return [{"strategy": "bundled-missing", "ok": False, "error": str(bundled)}]
+    dll_path = bundled.resolve()
+    _windows_prepare_dll_search_path(dll_path)
+    spath = str(dll_path)
+    specs: list[tuple[str, int | None]] = [
+        ("altered_search_path_0x8", _WIN_LOAD_ALTERED_SEARCH_PATH),
+        ("dll_load_dir_default_dirs_0x1100", _WIN_LOAD_DLL_FLAGS),
+        ("default_cdll_no_winmode", None),
+    ]
+    out: list[dict[str, str | bool]] = []
+    for name, flags in specs:
+        try:
+            if flags is None:
+                ctypes.CDLL(spath)
+            else:
+                ctypes.CDLL(spath, winmode=flags)
+            out.append({"strategy": name, "ok": True, "error": ""})
+        except (OSError, TypeError) as e:
+            out.append({"strategy": name, "ok": False, "error": f"{type(e).__name__}: {e}"})
+    return out
 
 
 def _load_dll(path: str | None) -> ctypes.CDLL:
