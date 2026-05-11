@@ -1,3 +1,3 @@
-module github.com/snipp/hik-mvcamera-control/ffi/go
+module github.com/snippet0809/hik-mvcamera-control/ffi/go
 
 go 1.22

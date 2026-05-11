@@ -1,5 +1,5 @@
 // Package hikcr 通过 cgo 调用 hik_code_reader C API。
-// import 路径形如：github.com/<你的GitHub>/<仓库名>/ffi/go/hikcr（与 ffi/go/go.mod 的 module 行一致）。
+// import 路径形如：github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr（与 ffi/go/go.mod 的 module 行一致）。
 //
 // 构建示例（按实际路径修改）：
 //

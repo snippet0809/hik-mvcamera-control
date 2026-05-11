@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/snipp/hik-mvcamera-control"
+Homepage = "https://github.com/snippet0809/hik-mvcamera-control"
 
 [tool.setuptools.packages.find]
 where = ["."]
