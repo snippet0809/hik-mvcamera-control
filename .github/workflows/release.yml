@@ -118,28 +118,33 @@ jobs:
           files: |
             artifact-publish/*
           body: |
-            ## Python（pip，托管在 GitHub，不经 PyPI）
-            1. 在仓库 **Settings → Pages** 启用 **Branch: `gh-pages` / (root)**（首次发版后才有该分支）。
-            2. 使用 **PEP 503** 索引安装（版本号与 tag 一致，去掉前缀 `v`，例如 tag `v0.1.0` → `0.1.0`）：
+            ## Python（pip，不经 PyPI）
 
-            ```bash
-            pip install "hik-code-reader==0.1.0" --index-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/" --trusted-host "${{ github.repository_owner }}.github.io"
-            ```
-
-            或直接安装本 Release 上的 wheel：
+            **直链安装本 Release 的 wheel（推荐，不依赖 GitHub Pages）：**
 
             ```bash
             pip install "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ needs.build-windows.outputs.wheel_name }}"
             ```
 
-            ## Go（go mod，源码在 GitHub）
-            确保 `ffi/go/go.mod` 第一行为 `module github.com/${{ github.repository }}/ffi/go`。本工作流已自动创建标签 **`ffi/go/${{ github.ref_name }}`**（与 `v*` 指向同一提交，若不存在）。拉取示例：
+            **通过 PEP 503 源安装**（需维护者已部署 `gh-pages` 索引；首次搭建见仓库 **README**「在 GitHub 上托管分发」，此处不重复管理员步骤）：
+
+            将下面命令里的 `<版本>` 换成本 tag 去掉前缀 `v` 的版本号（本 tag：`${{ github.ref_name }}`）。
+
+            ```bash
+            pip install "hik-code-reader==<版本>" \
+              --index-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/" \
+              --trusted-host "${{ github.repository_owner }}.github.io"
+            ```
+
+            ## Go（模块在 `ffi/go`）
 
             ```bash
             go get "github.com/${{ github.repository }}/ffi/go@${{ github.ref_name }}"
             ```
 
-            私有仓库可设置：`GOPRIVATE=github.com/${{ github.repository_owner }}/*`
+            私有仓库：`GOPRIVATE=github.com/${{ github.repository_owner }}/*`
+
+            模块路径：`github.com/${{ github.repository }}/ffi/go`。与本 tag 对应的 **`ffi/go/${{ github.ref_name }}`** 标签由工作流维护，供 `go get` 解析版本。
 
       - name: Fetch existing gh-pages simple index (merge links)
         run: |
