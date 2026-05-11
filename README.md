@@ -214,10 +214,42 @@ cmake --build build
 2. GigE 设备注意网卡、防火墙与网段；改 IP 前须 `openDeviceForParameters` 使设备处于 **Open**，并阅读 `setIp` 注释（改 IP 后设备常重启，本地句柄会被移除）。
 3. 将 SDK 提供的 **DLL**（若静态链仍依赖运行时）放在可执行文件同目录或系统 `PATH` 中，按官方文档为准。
 
+### 读码器 SDK 使用要点（与 `.docs` 开发指南 CHM 一致）
+
+以下摘要自海康读码器 **SDK 开发指南**，使用本封装或直连 `MvCodeReader` 前请一并遵守：
+
+1. **GigE 网口巨帧**：使用前需先在网卡上开启 **巨帧（Jumbo Frame）**，否则大包/高负载下易丢包或异常。  
+2. **RunTime 包**：需安装与目标程序 **位数一致**（32 位 / 64 位）的 **工业相机 SDK RunTime**，且版本为 **RunTime 3.0.0 及以上**。  
+3. **回调与轮询互斥**：**回调类接口**与 **轮询类接口**不能同时用来取图；二者二选一，不可混用。  
+4. **多路回调**：对指定流通道调用底层 **`MV_CODEREADER_MSC_RegisterImageCallBack()`** 可注册回调；可对多路流通道分别注册，以同时获取多路图像与条码结果。  
+5. **多路轮询**：**`MV_CODEREADER_MSC_GetOneFrameTimeout()`** 可按通道轮询取图；可对多路流通道分别轮询，以同时获取多路数据。
+
+本仓库 C++ 封装在取流路径上主要采用 **回调** 模式（如 BCR 回调）；若你在同进程内再调官方 **轮询** 接口，须遵守上述互斥约定。更细的参数与流程以 **CHM / 官方 PDF** 为准。
+
+### Windows：RunTime 位置与「环境变量」说明
+
+海康 **MVS / IDMVS / RunTime** 安装程序通常不会单独约定一个在头文件里写死的变量名（如 `MV_SDK_ROOT`），而是把 **若干目录追加到系统或用户的 `PATH`**，让 `LoadLibrary` / DLL 依赖解析能找到 `MvCodeReaderCtrl.dll`、`MVIDCodeReader.dll` 等及依赖链。
+
+**请你本机自查 PATH 里与厂商相关的项**（在 PowerShell 中执行，合并查看用户级与机器级）：
+
+```powershell
+('Machine','User') | ForEach-Object {
+  [Environment]::GetEnvironmentVariable('Path', $_) -split ';' |
+    Where-Object { $_ -match '(?i)MVS|MvCode|IDMVS|Hik|HIKROBOT|Runtime|Common Files\\MVS' }
+} | Sort-Object -Unique
+```
+
+常见会出现的路径形态（**仅供参考，以你机器上安装版本为准**）：
+
+- 含 **`Common Files\MVS\Runtime`** 或 **`Runtime\Win64`** 等字样的目录（独立 RunTime 包或套件附带）。  
+- 含 **`MVS`**、**`Development`**、**`Bin\win64`**（完整开发包）或 **读码器 / IDMVS** 安装目录下的 **`Bin`**。
+
+若进程仍报 **找不到 DLL / 0xc0000135**：除检查 `PATH` 外，还可把缺失的 DLL 放到 **`hik_code_reader.dll` 同目录**，或确认与 **RunTime 3.0.0+** 及 **x64/x86 位数** 一致。
+
 ## 许可证与第三方
 
 海康威视 **MvCamera / MvCodeReader** SDK 及其文档的版权与许可归原著作权人所有；本仓库中的封装代码请以你方项目许可证为准。GoogleTest 遵循其开源协议（由 CMake `FetchContent` 获取）。
 
 ## 相关文档
 
-- 读码器开发说明可参考仓库内 `.docs` 下文档及 `include/MvCodeReader` 头文件中的 API 定义。
+- 读码器开发说明可参考仓库内 **`.docs`** 下 **CHM（读码器 SDK 开发指南）** 及 **`include/MvCodeReader`** 头文件中的 API 定义（如 `MV_CODEREADER_MSC_*`）。
