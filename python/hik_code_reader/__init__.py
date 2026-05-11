@@ -2,7 +2,8 @@
 海康读码器 C API 的 ctypes 封装。wheel 内 ``_native`` 含 ``hik_code_reader.dll`` 与海康 ``*.lib``（供再链）。
 **海康 MvCodeReader 运行时 ``*.dll`` 不在公共 CI 产物中打包**（避免依赖「某台开发机是否装了 MVS」）；运行环境需能解析这些依赖（见仓库 README）。
 
-- ``HIK_CODE_READER_DLL``：显式指定 ``hik_code_reader.dll`` 路径（可选）。
+- ``HIK_CODE_READER_DLL``：显式指定 ``hik_code_reader.dll`` 路径（可选，覆盖默认）。
+- 默认仅加载包内 ``_native/hik_code_reader.dll``（完整 wheel）；不在仓库或磁盘其它位置自动搜寻该 DLL。
 - Windows 加载前：将 ``hik_code_reader.dll`` 所在目录、**探测到的 MvCodeReader 运行时目录**（``where
   MvCodeReaderCtrl.dll``、常见 ``Program Files`` 下安装树）、固定 ``MVS\\Runtime\\Win64_x64`` 猜测路径，以及
   海康安装器写入的环境变量 / ``Path`` 项一并加入 ``PATH`` 与 ``add_dll_directory``（结果模块级缓存，只算一次）。
@@ -70,22 +71,6 @@ class HikCrDeviceInfo(Structure):
 def default_native_dll() -> Path:
     """wheel 内嵌 DLL 的默认路径（包内 ``_native/hik_code_reader.dll``）。"""
     return Path(__file__).resolve().parent / "_native" / "hik_code_reader.dll"
-
-
-def _effective_native_dll_path() -> Path | None:
-    """实际用于加载的 ``hik_code_reader.dll``：优先 wheel 的 ``_native``，否则尝试仓库根下 CMake 产物（``pip install -e`` 开发时常未拷 DLL）。"""
-    p = default_native_dll()
-    if p.is_file():
-        return p
-    repo_root = Path(__file__).resolve().parents[2]
-    for cand in (
-        repo_root / "build" / "hik_code_reader.dll",
-        repo_root / "build" / "Release" / "hik_code_reader.dll",
-        repo_root / "build-ninja" / "hik_code_reader.dll",
-    ):
-        if cand.is_file():
-            return cand
-    return None
 
 
 def _is_64bit_python() -> bool:
@@ -333,14 +318,11 @@ def _cdll_win(path: str) -> ctypes.CDLL:
 def diagnose_runtime_search_context() -> dict[str, object]:
     """自助诊断：bundled DLL、探测到的 MvCodeReader 目录、PATH 前缀（便于核对与海康 Runtime 是否衔接）。"""
     bundled = default_native_dll()
-    eff = _effective_native_dll_path()
     discovered = [str(p.resolve()) for p in _mvcode_runtime_dirs_discovered() if p.is_dir()]
     path_head = os.environ.get("PATH", "")[:800]
     return {
         "bundled_hik_code_reader_dll": str(bundled),
         "bundled_exists": bundled.is_file(),
-        "effective_hik_code_reader_dll": str(eff) if eff else "",
-        "effective_exists": eff.is_file() if eff else False,
         "mvcode_runtime_dirs": discovered,
         "path_env_prefix_800chars": path_head,
     }
@@ -354,17 +336,18 @@ def diagnose_windows_native_load() -> list[dict[str, str | bool]]:
     """
     if os.name != "nt":
         return [{"strategy": "skip-non-windows", "ok": True, "error": ""}]
-    eff = _effective_native_dll_path()
-    if eff is None:
+    env = os.environ.get("HIK_CODE_READER_DLL", "").strip()
+    dll_path = Path(env) if env else default_native_dll()
+    if not dll_path.is_file():
         b = default_native_dll()
         return [
             {
                 "strategy": "hik_code_reader.dll-missing",
                 "ok": False,
-                "error": f"无 wheel _native 且无 CMake 产物: {b}",
+                "error": f"缺少 hik_code_reader.dll：请使用含 _native 的 wheel，或将 DLL 放到 {b}；也可用 HIK_CODE_READER_DLL 指定路径",
             }
         ]
-    dll_path = eff.resolve()
+    dll_path = dll_path.resolve()
     _windows_prepare_dll_search_path(dll_path)
     spath = str(dll_path)
     specs: list[tuple[str, int | None]] = [
@@ -395,16 +378,16 @@ def _load_dll(path: str | None) -> ctypes.CDLL:
 
     if path:
         return load_at(Path(path))
-    env = os.environ.get("HIK_CODE_READER_DLL")
+    env = os.environ.get("HIK_CODE_READER_DLL", "").strip()
     if env:
         return load_at(Path(env))
-    eff = _effective_native_dll_path()
-    if eff is not None:
-        return load_at(eff)
-    if os.name == "nt":
-        _windows_prepare_dll_search_path(Path.cwd() / "hik_code_reader.dll")
-        return _cdll_win("hik_code_reader.dll")
-    return ctypes.CDLL("hik_code_reader.dll")
+    bundled = default_native_dll()
+    if not bundled.is_file():
+        raise FileNotFoundError(
+            f"hik_code_reader: 缺少 {bundled}（请安装含 _native 的 wheel；开发时可将 CMake 编出的 "
+            "hik_code_reader.dll 拷入该路径，或设置 HIK_CODE_READER_DLL）"
+        )
+    return load_at(bundled)
 
 
 class HikCodeReader:

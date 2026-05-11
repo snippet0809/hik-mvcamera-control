@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-/** 枚举到的单台设备摘要（GigE 含导出网口 IP；USB3 Vision 的 netExportIp 为空串）。 */
+/** 枚举到的单台设备摘要（当前仅 GigE）。 */
 struct CodeReaderInfo {
     std::string serialNumber;
     std::string netExportIp;

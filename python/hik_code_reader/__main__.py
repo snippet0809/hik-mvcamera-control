@@ -18,7 +18,6 @@ def main() -> int:
         HikCodeReader,
         diagnose_runtime_search_context,
         diagnose_windows_native_load,
-        default_native_dll,
     )
 
     print("=== hik_code_reader selftest ===")
@@ -28,8 +27,6 @@ def main() -> int:
     ctx = diagnose_runtime_search_context()
     print("[context] bundled_exists:", ctx["bundled_exists"])
     print("[context] bundled:", ctx["bundled_hik_code_reader_dll"])
-    print("[context] effective_exists:", ctx.get("effective_exists"))
-    print("[context] effective:", ctx.get("effective_hik_code_reader_dll") or "(none)")
     print("[context] mvcode_runtime_dirs count:", len(ctx["mvcode_runtime_dirs"]))
     for d in ctx["mvcode_runtime_dirs"][:12]:
         print("   ", d)
