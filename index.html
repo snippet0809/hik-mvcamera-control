@@ -280,7 +280,7 @@
 <ul>
 <li><strong>构建</strong>：根目录 <strong>CMake</strong> 生成静态库、测试与 <strong>共享库</strong>（目标名见 <code>CMakeLists.txt</code>）。  </li>
 <li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，构建前将 DLL 拷入 <code>hik_code_reader/_native/</code>（CI / 发版流程中完成）。  </li>
-<li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库，需在 Windows 上配置好 MSVC 与库路径（见 CI 中示例）。</li>
+<li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库；<strong>DLL 仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 CI 与 <code>go.dev/issue/20982</code>）。</li>
 </ul>
 <h3>GitHub Actions 在流程中的位置</h3>
 <table>
@@ -415,7 +415,7 @@ print(cr.enum_devices())
 </code></pre>
 <p><strong>说明</strong>：</p>
 <ul>
-<li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（Windows 上通常为 MSVC 与 Release 里的 <code>.lib</code> / 运行时 <code>dll</code>）；<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
+<li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（<code>.lib</code> + 运行时 <code>dll</code>）；<strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，与用 MSVC 编出的 <code>hik_code_reader.dll</code> 不矛盾。<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
 <li><strong>私有仓库</strong>：<br />
 <code>go env -w GOPRIVATE=github.com/you/*</code><br />
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
