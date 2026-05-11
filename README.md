@@ -134,16 +134,9 @@ print(cr.enum_devices())
 
 wheel 里只有 **`hik_code_reader.dll`**（及 `.lib`），**不包含**海康 **`MvCodeReaderCtrl.dll`** 等运行时库。加载 `hik_code_reader.dll` 时，系统还要能解析这些依赖。
 
-1. 安装与海康文档一致的 **RunTime 3.0.0+（位数与 Python 一致，一般为 64 位）**，并确认安装程序已把 RunTime 的 **Bin** 目录写入系统 **`Path`**；或自行把该目录加入 **`Path`** 后重启终端 / IDE。  
-2. 若不便改全局 `Path`，可在运行 Python **之前**设置（把路径改成你本机 RunTime 下实际目录）：
-
-   ```powershell
-   $env:HIK_CODE_READER_VENDOR_DLL_DIR = "C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64"
-   ```
-
-   （具体文件夹以你机器为准，需包含 **`MvCodeReaderCtrl.dll`**。）包内会在 `ctypes` 加载前对该目录调用 `os.add_dll_directory`（Windows）。
-
-3. 仍失败时，用「依赖查看」工具打开 **`hik_code_reader.dll`**，看还缺哪一个 `.dll`，再对照 RunTime / MVS 安装目录补齐或加入 `Path`。
+1. 安装 **MVS RunTime 3.0.0+** 与/或 **IDMVS**（位数与 Python 一致，一般为 64 位），让安装程序写入 **`Path`** 及海康常用变量（如 **`GENICAM_GENTL64_PATH`**、**`MVCAM_GENICAM_CLPROTOCOL`** 等）。  
+2. **Python 包（Windows）**在 `ctypes` 加载前会按 **`GENICAM_GENTL64_PATH` / `GENICAM_GENTL32_PATH`**（随解释器位数）、**`MVCAM_GENICAM_CLPROTOCOL`**，以及 **`Path`** 中含 **`MVS` / `IDMVS` / `MvSDK` / `MvCode`** 的目录依次调用 `os.add_dll_directory`，与 IDMVS 自动配置的典型环境一致（**不引入本仓库自定义的「海康路径」环境变量名**）。  
+3. 若仍失败：确认上述变量在 **启动 Python 的进程**里可见（同一终端 `echo %GENICAM_GENTL64_PATH%` / PowerShell `$env:GENICAM_GENTL64_PATH`）；或用依赖查看工具打开 **`hik_code_reader.dll`** 核对缺失的 `.dll`。
 
 ### Go 开发者
 
@@ -243,15 +236,28 @@ cmake --build build
 
 ### Windows：RunTime 位置与「环境变量」说明
 
-海康 **MVS / IDMVS / RunTime** 安装程序通常不会单独约定一个在头文件里写死的变量名（如 `MV_SDK_ROOT`），而是把 **若干目录追加到系统或用户的 `PATH`**，让 `LoadLibrary` / DLL 依赖解析能找到 `MvCodeReaderCtrl.dll`、`MVIDCodeReader.dll` 等及依赖链。
+海康 **MVS / IDMVS / RunTime** 安装器一般会同时：
 
-**请你本机自查 PATH 里与厂商相关的项**（在 PowerShell 中执行，合并查看用户级与机器级）：
+- 写入 **`PATH`**（RunTime、`IDMVS\...\MvSDK` 等）；  
+- 写入 **GenICam / MVS 相关变量**（示例，以你机为准）：**`GENICAM_GENTL64_PATH`**、**`GENICAM_GENTL32_PATH`**、**`MVCAM_GENICAM_CLPROTOCOL`** 等。
+
+**`python/hik_code_reader`** 在 Windows 上会读取上述 **路径型官方变量** 及 **`Path`** 中的 MVS/IDMVS 相关目录，用于 `os.add_dll_directory`（见包内实现）。仍仅保留本仓库自有的 **`HIK_CODE_READER_DLL`**（仅指向 **`hik_code_reader.dll`** 本身，可选）。
+
+**自查 PATH 里与厂商相关的项**（PowerShell，合并用户级与机器级）：
 
 ```powershell
 ('Machine','User') | ForEach-Object {
   [Environment]::GetEnvironmentVariable('Path', $_) -split ';' |
     Where-Object { $_ -match '(?i)MVS|MvCode|IDMVS|Hik|HIKROBOT|Runtime|Common Files\\MVS' }
 } | Sort-Object -Unique
+```
+
+**自查海康常见路径型环境变量**（当前进程继承的安装器配置）：
+
+```powershell
+'GENICAM_GENTL64_PATH','GENICAM_GENTL32_PATH','MVCAM_GENICAM_CLPROTOCOL' | ForEach-Object {
+  "${_}=$([Environment]::GetEnvironmentVariable($_,'Process'))"
+}
 ```
 
 常见会出现的路径形态（**仅供参考，以你机器上安装版本为准**）：

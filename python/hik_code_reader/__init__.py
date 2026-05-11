@@ -2,13 +2,15 @@
 海康读码器 C API 的 ctypes 封装。wheel 内附带 Windows x64 的 ``hik_code_reader.dll``（``_native`` 目录）。
 
 - ``HIK_CODE_READER_DLL``：显式指定 ``hik_code_reader.dll`` 路径（可选）。
-- ``HIK_CODE_READER_VENDOR_DLL_DIR``：含海康 **运行时** ``MvCodeReaderCtrl.dll`` 等目录；wheel **不自带** 这些 DLL，
-  若未把它们所在目录加入系统 ``Path``，请设此变量或安装 RunTime 后保证 ``Path``（见仓库 README）。
+- 海康 **MvCodeReaderCtrl.dll** 等不在 wheel 内。Windows 上加载前会按 **MVS / IDMVS 安装器写入的环境变量** 与 ``Path``
+  补充 DLL 搜索目录（``os.add_dll_directory``）：``GENICAM_GENTL64_PATH`` / ``GENICAM_GENTL32_PATH``（随 Python 位数）、
+  ``MVCAM_GENICAM_CLPROTOCOL``，以及 ``Path`` 中含 ``MVS``、``IDMVS``、``MvSDK`` 等字样的目录（与常见 IDMVS 配置一致）。
 """
 
 from __future__ import annotations
 
 import os
+import sys
 import ctypes
 from ctypes import (
     CFUNCTYPE,
@@ -64,18 +66,75 @@ def default_native_dll() -> Path:
     return Path(__file__).resolve().parent / "_native" / "hik_code_reader.dll"
 
 
+def _is_64bit_python() -> bool:
+    return sys.maxsize > 2**32
+
+
+def _env_dir_if_exists(name: str) -> list[Path]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return []
+    p = Path(raw)
+    return [p] if p.is_dir() else []
+
+
+def _path_entries_hik_mvs() -> list[Path]:
+    """``Path`` 中与 MVS / IDMVS / 读码器相关的目录（安装器常自动追加）。"""
+    out: list[Path] = []
+    for part in os.environ.get("PATH", "").split(os.pathsep):
+        part = part.strip().strip('"')
+        if not part:
+            continue
+        low = part.lower()
+        if (
+            r"\mvs" in low
+            or "/mvs/" in low
+            or "idmvs" in low
+            or "mvsdk" in low
+            or "mvcode" in low
+        ):
+            p = Path(part)
+            if p.is_dir():
+                out.append(p)
+    return out
+
+
+def _windows_official_hik_dll_dirs() -> list[Path]:
+    """海康安装程序常见环境变量与 ``Path`` 项，去重且顺序稳定。"""
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def push(p: Path) -> None:
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key not in seen:
+            seen.add(key)
+            ordered.append(p)
+
+    if _is_64bit_python():
+        for p in _env_dir_if_exists("GENICAM_GENTL64_PATH"):
+            push(p)
+    else:
+        for p in _env_dir_if_exists("GENICAM_GENTL32_PATH"):
+            push(p)
+    for p in _env_dir_if_exists("MVCAM_GENICAM_CLPROTOCOL"):
+        push(p)
+    for p in _path_entries_hik_mvs():
+        push(p)
+    return ordered
+
+
 def _windows_add_dll_search_paths(dll_path: Path) -> None:
-    """加载 ``hik_code_reader.dll`` 前，把依赖搜索路径交给 Windows（Python 3.8+）。"""
+    """加载 ``hik_code_reader.dll`` 前，按海康官方变量与 ``Path`` 补充搜索路径（Python 3.8+ ``add_dll_directory``）。"""
     if os.name != "nt":
         return
     add = getattr(os, "add_dll_directory", None)
     if add is None:
         return
-    vendor = os.environ.get("HIK_CODE_READER_VENDOR_DLL_DIR", "").strip()
-    if vendor:
-        vp = Path(vendor)
-        if vp.is_dir():
-            add(str(vp))
+    for p in _windows_official_hik_dll_dirs():
+        add(str(p))
     parent = dll_path.parent
     if parent.is_dir():
         add(str(parent))
