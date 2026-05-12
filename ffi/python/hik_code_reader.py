@@ -31,7 +31,7 @@ HIK_CR_ERR_RUNTIME = 3
 HIK_CR_ERR_INVALID_ARG = 4
 HIK_CR_ERR_NO_MEMORY = 5
 
-BcrCallback = CFUNCTYPE(None, POINTER(c_char_p), c_int, c_void_p)
+BcrCallback = CFUNCTYPE(None, c_char_p, POINTER(c_char_p), c_int, c_void_p)
 
 
 class HikCrDeviceInfo(Structure):
@@ -67,8 +67,8 @@ class HikCodeReader:
             getattr(L, name).restype = c_int
         L.hik_cr_set_ip.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
         L.hik_cr_set_ip.restype = c_int
-        L.hik_cr_register_bcr_callback.argtypes = [BcrCallback, c_void_p]
-        L.hik_cr_register_bcr_callback.restype = c_int
+        L.hik_cr_register_bcr_callback_for_serial.argtypes = [c_char_p, BcrCallback, c_void_p]
+        L.hik_cr_register_bcr_callback_for_serial.restype = c_int
         L.hik_cr_set_int_value.argtypes = [c_char_p, c_char_p, c_int32]
         L.hik_cr_set_int_value.restype = c_int
         L.hik_cr_set_string_value.argtypes = [c_char_p, c_char_p, c_char_p]
@@ -131,8 +131,12 @@ class HikCodeReader:
             )
         )
 
-    def register_bcr_callback(self, cb: BcrCallback | None, user_data: int = 0) -> None:
-        self.check(self._lib.hik_cr_register_bcr_callback(cb, c_void_p(user_data)))
+    def register_bcr_callback_for_serial(self, sn: str, cb: BcrCallback | None, user_data: int = 0) -> None:
+        self.check(
+            self._lib.hik_cr_register_bcr_callback_for_serial(
+                sn.encode("utf-8"), cb, c_void_p(user_data)
+            )
+        )
 
     def trigger_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))

@@ -6,7 +6,7 @@
  * - 所有函数线程安全与否与底层 C++ 一致；`hik_cr_last_error_copy` 使用线程局部存储。
  * - `const char *` 入参须为 UTF-8 且非 NULL（除非函数说明可 NULL）。
  * - 枚举设备返回的列表须用 `hik_cr_free_device_list` 释放。
- * - BCR 回调在 SDK 线程触发，回调内勿长时间阻塞或再次调用本库（除非文档允许）。
+ * - BCR 回调按序列号注册（`hik_cr_register_bcr_callback_for_serial`），在 SDK 线程触发，回调内勿长时间阻塞或再次调用本库（除非文档允许）；未注册序列号上的读码结果静默丢弃。
  */
 
 #ifndef HIK_CODE_READER_C_API_H
@@ -52,9 +52,11 @@ typedef struct HikCrDeviceInfo {
 } HikCrDeviceInfo;
 
 /**
- * BCR 结果回调。`codes` 在回调返回前有效；`code_count` 为 0 表示本轮无字符串（一般不会单独调用）。
+ * BCR 结果回调（按序列号注册，每台设备独立）。
+ * `serial_utf8` 与 `codes` 在回调返回前有效；`code_count` 为 0 表示本轮无条码字符串。
  */
-typedef void (*HikCrBcrCallback)(const char *const *codes, int code_count, void *user_data);
+typedef void (*HikCrBcrCallback)(const char *serial_utf8, const char *const *codes, int code_count,
+                                 void *user_data);
 
 /**
  * 枚举在线读码器（当前实现仅 GigE）。
@@ -72,8 +74,12 @@ HIK_CR_API HikCrResult hik_cr_open_device_for_parameters(const char *serial_utf8
 HIK_CR_API HikCrResult hik_cr_set_ip(const char *serial_utf8, const char *ip, const char *mask,
                                      const char *gateway);
 
-/** 注册/更新 C 层 BCR 回调；cb==NULL 表示不在回调中调用用户函数（C++ 侧转发仍可能已安装）。 */
-HIK_CR_API HikCrResult hik_cr_register_bcr_callback(HikCrBcrCallback cb, void *user_data);
+/**
+ * 为指定序列号注册/更新/移除 BCR 回调。同一序列号再次注册时新回调覆盖旧回调；cb==NULL 表示移除该序列号的回调。
+ * 未注册回调的设备在读到码时静默丢弃（不向用户派发）。若设备已在取流，会尝试刷新 SDK 侧绑定。
+ */
+HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *serial_utf8, HikCrBcrCallback cb,
+                                                               void *user_data);
 
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8);
 

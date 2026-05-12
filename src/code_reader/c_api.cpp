@@ -69,34 +69,6 @@ namespace {
         }
     }
 
-    std::mutex g_bcrMutex;
-    HikCrBcrCallback g_bcrCb = nullptr;
-    void *g_bcrUser = nullptr;
-
-    void installBcrForwarderOnce() {
-        static std::once_flag once;
-        std::call_once(once, [] {
-            registerImageCallback([](std::vector<std::string> codeArr) {
-                HikCrBcrCallback cb = nullptr;
-                void *ud = nullptr;
-                {
-                    std::lock_guard<std::mutex> lock(g_bcrMutex);
-                    cb = g_bcrCb;
-                    ud = g_bcrUser;
-                }
-                if (cb == nullptr) {
-                    return;
-                }
-                std::vector<const char *> ptrs;
-                ptrs.reserve(codeArr.size());
-                for (const auto &s : codeArr) {
-                    ptrs.push_back(s.c_str());
-                }
-                cb(ptrs.data(), static_cast<int>(ptrs.size()), ud);
-            });
-        });
-    }
-
 } // namespace
 
 extern "C" {
@@ -159,12 +131,25 @@ HIK_CR_API HikCrResult hik_cr_set_ip(const char *serial_utf8, const char *ip, co
     return wrap([&] { setIp(serial_utf8, ip, mask, gateway); });
 }
 
-HIK_CR_API HikCrResult hik_cr_register_bcr_callback(HikCrBcrCallback cb, void *user_data) {
+HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *serial_utf8, HikCrBcrCallback cb,
+                                                               void *user_data) {
+    if (!requireNonNull(serial_utf8, "serial_utf8")) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
     return wrap([&] {
-        installBcrForwarderOnce();
-        std::lock_guard<std::mutex> lock(g_bcrMutex);
-        g_bcrCb = cb;
-        g_bcrUser = user_data;
+        const std::string sn(serial_utf8);
+        if (cb == nullptr) {
+            registerImageCallbackForSerial(sn, {});
+            return;
+        }
+        registerImageCallbackForSerial(sn, [cb, user_data, sn](std::vector<std::string> codeArr) {
+            std::vector<const char *> ptrs;
+            ptrs.reserve(codeArr.size());
+            for (const auto &s : codeArr) {
+                ptrs.push_back(s.c_str());
+            }
+            cb(sn.c_str(), ptrs.data(), static_cast<int>(ptrs.size()), user_data);
+        });
     });
 }
 

@@ -38,10 +38,12 @@ void openDeviceForParameters(const std::string &sn);
 void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway);
 
 /**
- * 注册读码结果回调；在识别到条码且类型为 BCR 时，于 SDK 线程调用。
- * 空 std::function 表示取消；建议在 startDevice 之前注册。
+ * 按序列号注册读码结果回调；在识别到条码且类型为 BCR 时，于 SDK 线程仅向该序列号对应的回调派发。
+ * 空 std::function 表示取消该序列号的回调；未注册则静默丢弃。同一序列号再次注册时覆盖旧回调。
+ * 若该序列号设备已在取流，会刷新 SDK 图像回调绑定。
  */
-void registerImageCallback(const std::function<void(std::vector<std::string>)> &callback);
+void registerImageCallbackForSerial(const std::string &sn,
+                                    const std::function<void(std::vector<std::string>)> &callback);
 
 /**
  * 软触发（TriggerSoftware）。要求：已成功 startDevice，当前处于取流中。

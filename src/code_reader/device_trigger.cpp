@@ -10,6 +10,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -18,11 +19,8 @@ namespace {
     /** 软触发命令节点名（GenICam 常见命名，具体以设备 XML 为准）。 */
     constexpr const char *kTriggerSoftware = "TriggerSoftware";
 
-    /** 保护 g_imageCallback，避免与 SDK 回调线程并发读写。 */
-    std::mutex g_imageCallbackMutex;
-
-    /** 集成方通过 registerImageCallback 注册的读码结果回调；空表示不注册 SDK 回调。 */
-    std::function<void(std::vector<std::string>)> g_imageCallback;
+    std::mutex g_serialBcrMutex;
+    std::unordered_map<std::string, std::function<void(std::vector<std::string>)>> g_callbacksBySerial;
 
     /**
      * 从 MV_CODEREADER_IMAGE_OUT_INFO 中解析 BCR 结果，得到条码字符串列表。
@@ -61,42 +59,51 @@ namespace {
 
     /**
      * SDK 要求的 __stdcall 图像回调桥接函数。
-     * pData 为图像缓冲（此处只关心读码结果，不解析像素）；pstFrameInfo 含 BCR 等元数据。
+     * pUser 为 CodeReader*，用于按序列号查找用户回调；未注册则静默返回。
      */
     void __stdcall sdkImageCallbackBridge([[maybe_unused]] unsigned char *pData, MV_CODEREADER_IMAGE_OUT_INFO *pstFrameInfo,
-                                          [[maybe_unused]] void *pUser) {
-        if (pstFrameInfo == nullptr) {
+                                          void *pUser) {
+        if (pstFrameInfo == nullptr || pUser == nullptr) {
             return;
         }
-        // 仅在有读码结果且类型为 BCR 时向上层派发（与头文件约定一致）
         if (!pstFrameInfo->bIsGetCode || pstFrameInfo->nResultType != CodeReader_ResType_BCR) {
             return;
         }
+        auto *device = static_cast<CodeReader *>(pUser);
         std::vector<std::string> codes = extractBcrStrings(*pstFrameInfo);
-        // 拷贝回调后在锁外调用，避免用户回调里再次 register 导致死锁
         std::function<void(std::vector<std::string>)> userCb;
         {
-            std::lock_guard<std::mutex> lock(g_imageCallbackMutex);
-            userCb = g_imageCallback;
+            std::lock_guard<std::mutex> lock(g_serialBcrMutex);
+            const auto it = g_callbacksBySerial.find(device->serialNumber);
+            if (it == g_callbacksBySerial.end() || !it->second) {
+                return;
+            }
+            userCb = it->second;
         }
-        if (userCb) {
-            userCb(std::move(codes));
-        }
+        userCb(std::move(codes));
     }
 
 } // namespace
 
-/**
- * 注册/更新/清空读码结果回调（仅更新内存；真正写入 SDK 在每次 startGrabbing 前完成）。
- */
-void registerImageCallback(const std::function<void(std::vector<std::string>)> &callback) {
-    std::lock_guard<std::mutex> lock(g_imageCallbackMutex);
-    g_imageCallback = callback;
+void registerImageCallbackForSerial(const std::string &sn,
+                                    const std::function<void(std::vector<std::string>)> &callback) {
+    {
+        std::lock_guard<std::mutex> lock(g_serialBcrMutex);
+        if (callback) {
+            g_callbacksBySerial[sn] = callback;
+        } else {
+            g_callbacksBySerial.erase(sn);
+        }
+    }
+    CodeReader *d = getDevice(sn, false);
+    if (d != nullptr && d->status == CodeReaderStatus::Grabbing) {
+        codeReaderInternalBindImageCallbackBeforeGrabbing(d);
+    }
 }
 
 /**
- * 在 MV_CODEREADER_StartGrabbing 之前，把当前全局回调注册到指定设备句柄。
- * 无用户回调时向 SDK 传 nullptr，等价于取消图像回调。
+ * 在 MV_CODEREADER_StartGrabbing 之前（或取流中刷新），按序列号把 SDK 图像回调绑定到桥接函数。
+ * 无该序列号用户回调时向 SDK 传 nullptr，等价于不向用户派发读码结果。
  */
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     if (device == nullptr || device->handle == nullptr) {
@@ -104,12 +111,16 @@ void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     }
     std::function<void(std::vector<std::string>)> userCb;
     {
-        std::lock_guard<std::mutex> lock(g_imageCallbackMutex);
-        userCb = g_imageCallback;
+        std::lock_guard<std::mutex> lock(g_serialBcrMutex);
+        const auto it = g_callbacksBySerial.find(device->serialNumber);
+        if (it != g_callbacksBySerial.end()) {
+            userCb = it->second;
+        }
     }
     void(__stdcall * thunk)(unsigned char *, MV_CODEREADER_IMAGE_OUT_INFO *, void *) =
         userCb ? sdkImageCallbackBridge : nullptr;
-    int ok = MV_CODEREADER_RegisterImageCallBack(device->handle, thunk, nullptr);
+    void *pUser = userCb ? static_cast<void *>(device) : nullptr;
+    int ok = MV_CODEREADER_RegisterImageCallBack(device->handle, thunk, pUser);
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_RegisterImageCallBack error: " + toHexStr(ok));
     }

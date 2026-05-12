@@ -16,7 +16,7 @@ package hikcr
 #include "hik_code_reader/c_api.h"
 
 // Must match cgo-generated signature (see _cgo_export / prolog); do not use `extern void f();` — that is void(void) and conflicts.
-extern void hikcrGoBcrShim(char **codes, int code_count, void *user_data);
+extern void hikcrGoBcrShim(const char *serial_utf8, char **codes, int code_count, void *user_data);
 
 // Return //export shim as HikCrBcrCallback (Go cannot reference C.hikcrGoBcrShim; go#19837).
 HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
@@ -119,14 +119,15 @@ func TriggerDevice(serial string) error {
 }
 
 var (
-	bcrMu sync.Mutex
-	bcrFn func([]string)
+	bcrMu       sync.Mutex
+	bcrBySerial = map[string]func([]string){}
 )
 
 //export hikcrGoBcrShim
-func hikcrGoBcrShim(codes **C.char, count C.int, _ unsafe.Pointer) {
+func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointer) {
+	sn := C.GoString(serial)
 	bcrMu.Lock()
-	fn := bcrFn
+	fn := bcrBySerial[sn]
 	bcrMu.Unlock()
 	if fn == nil {
 		return
@@ -144,17 +145,23 @@ func hikcrGoBcrShim(codes **C.char, count C.int, _ unsafe.Pointer) {
 	fn(out)
 }
 
-// RegisterBcrCallback 注册 BCR 回调（在 SDK 线程调用，勿长时间阻塞）。
-// 传 nil 可清除回调。
-func RegisterBcrCallback(fn func([]string)) error {
+// RegisterBcrCallbackForSerial 为指定序列号注册 BCR 回调（在 SDK 线程调用，勿长时间阻塞）。
+// 同一序列号再次注册会覆盖；传 nil 清除该序列号的回调。未注册序列号上的读码结果会被静默丢弃。
+func RegisterBcrCallbackForSerial(serial string, fn func([]string)) error {
 	bcrMu.Lock()
-	bcrFn = fn
+	if fn == nil {
+		delete(bcrBySerial, serial)
+	} else {
+		bcrBySerial[serial] = fn
+	}
 	bcrMu.Unlock()
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
 	var cb C.HikCrBcrCallback
 	if fn != nil {
 		cb = C.hikcr_wrap_bcr_shim()
 	}
-	return check(C.hik_cr_register_bcr_callback(cb, nil))
+	return check(C.hik_cr_register_bcr_callback_for_serial(cs, cb, nil))
 }
 
 func SetIntValue(serial, key string, value int32) error {

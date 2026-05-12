@@ -50,7 +50,7 @@ TEST(CodeReaderTest, SmokeEnumGrabTriggerStopAndReopen) {
     std::cout << "[test] using device sn=" << sn << " ip=" << devs.front().netExportIp << '\n';
 
     std::atomic<int> bcrEvents{0};
-    registerImageCallback([&](std::vector<std::string> codeArr) {
+    registerImageCallbackForSerial(sn, [&](std::vector<std::string> codeArr) {
         const int n = ++bcrEvents;
         std::cout << "[test] BCR #" << n << " codes=";
         printStringsJoined(std::cout, codeArr, ", ");
@@ -81,6 +81,6 @@ TEST(CodeReaderTest, SmokeEnumGrabTriggerStopAndReopen) {
     std::this_thread::sleep_for(kAfterTriggers);
     ASSERT_NO_THROW(stopDevice(sn));
 
-    registerImageCallback({});
+    registerImageCallbackForSerial(sn, {});
     std::cout << "[test] done, BCR callback count=" << bcrEvents.load() << '\n';
 }
