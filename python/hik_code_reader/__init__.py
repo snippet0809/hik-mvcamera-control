@@ -27,6 +27,7 @@ from ctypes import (
     c_uint32,
     c_float,
     c_void_p,
+    cast,
 )
 from collections.abc import Callable
 from pathlib import Path
@@ -476,9 +477,11 @@ class HikCodeReader:
         )
 
     def register_bcr_callback_for_serial(self, sn: str, cb: Callable[..., None] | None, user_data: int = 0) -> None:
+        # ctypes 不能把 Python None 当作 C 函数指针 NULL；需显式空指针以注销回调。
+        cb_arg = cast(0, BcrCallback) if cb is None else cb
         self.check(
             self._lib.hik_cr_register_bcr_callback_for_serial(
-                sn.encode("utf-8"), cb, c_void_p(user_data)
+                sn.encode("utf-8"), cb_arg, c_void_p(user_data)
             )
         )
 
