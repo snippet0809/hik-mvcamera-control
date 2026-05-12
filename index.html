@@ -314,7 +314,7 @@
 <ul>
 <li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号与 GigE 导出 IP 等信息（见 <code>src/code_reader/device_info.cpp</code>）。</li>
 <li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、注册图像回调、起停取流等；按序列号操作）。</li>
-<li><strong>读码回调</strong>：<code>registerImageCallback</code>（BCR 结果列表）；<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
+<li><strong>读码回调</strong>：<code>registerImageCallbackForSerial</code>（按序列号注册 BCR 结果列表；未注册则静默丢弃）；<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
 <li><strong>改参前置</strong>：<code>openDeviceForParameters</code> 将设备置为 <strong>Open</strong>（已 OpenDevice、未取流）。正在取流时须先 <code>stopDevice</code>，否则会抛 <code>std::logic_error</code>。</li>
 <li><strong>GigE 网络</strong>：<code>setIp</code> 改 IP/掩码/网关（与 GenICam 写参不同类；成功后常 <code>destroyDevice</code> 释放本地缓存）。</li>
 <li><strong>GenICam 写参</strong>：<code>setIntValue</code> / <code>setFloatValue</code> / <code>setBoolValue</code> / <code>setStringValue</code> / <code>setEnumValue</code> / <code>setEnumValueByString</code>（均须先处于 Open，约定同 <code>openDeviceForParameters</code>）。</li>
@@ -363,12 +363,12 @@
 <ol>
 <li>在默认分支上确认代码与 <code>python/pyproject.toml</code> 已就绪。  </li>
 <li>创建并推送 <strong>语义化标签</strong>（必须以 <code>v</code> 开头）：<br />
-<code>git tag v0.1.0 &amp;&amp; git push origin v0.1.0</code>  </li>
+<code>git tag v0.0.2 &amp;&amp; git push origin v0.0.2</code>  </li>
 <li><strong>GitHub Actions</strong> 中 <strong><code>Release</code></strong> 工作流（<code>release.yml</code>）会自动：  </li>
-<li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.1.0</code> → <code>0.1.0</code>），再构建 <strong>Windows x64 wheel</strong>（<code>_native/</code> 内含 <code>hik_code_reader.dll</code> 与海康 <code>MvCodeReaderCtrl.lib</code> / <code>turbojpeg.lib</code>）；  </li>
+<li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.0.2</code> → <code>0.0.2</code>），再构建 <strong>Windows x64 wheel</strong>（<code>_native/</code> 内含 <code>hik_code_reader.dll</code> 与海康 <code>MvCodeReaderCtrl.lib</code> / <code>turbojpeg.lib</code>）；  </li>
 <li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、Go/cgo 用 zip（含 <code>lib/MvCodeReader/win64</code>）、<code>hik_code_reader.dll</code>、<code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>；  </li>
 <li>生成 <strong>PEP 503</strong> 页面并推送到 <strong><code>gh-pages</code></strong>（与已有索引合并，保留历史版本链接）；  </li>
-<li>在同一提交上自动创建 <strong><code>ffi/go/v0.1.0</code></strong> 标签（若不存在），供 <code>go get</code> 使用。</li>
+<li>在同一提交上自动创建 <strong><code>ffi/go/v0.0.2</code></strong> 标签（若不存在），供 <code>go get</code> 使用。</li>
 </ol>
 <h3>发版后维护者自检</h3>
 <ul>
@@ -384,20 +384,20 @@
 <p><strong>环境</strong>：当前 wheel 为 <strong>Windows x64</strong>（文件名中含 <strong><code>win_amd64</code></strong>），需在对应环境安装。</p>
 <p><strong>方式 A：从 GitHub Release 直链安装 wheel（不依赖 Pages，最省事）</strong>  </p>
 <ol>
-<li>打开本仓库 <strong><a href="https://github.com/snippet0809/hik-mvcamera-control/releases">Releases</a></strong>，选择对应版本（如 <strong><code>v0.0.1</code></strong>）。  </li>
+<li>打开本仓库 <strong><a href="https://github.com/snippet0809/hik-mvcamera-control/releases">Releases</a></strong>，选择对应版本（如 <strong><code>v0.0.2</code></strong>）。  </li>
 <li>在 <strong>Assets</strong> 里找到 <strong><code>hik_code_reader-…-py3-none-win_amd64.whl</code></strong>，复制其「直链」；或直接使用与 tag、版本一致的 URL（<strong>tag 带 <code>v</code>，包版本号无 <code>v</code></strong>）：</li>
 </ol>
-<pre><code class="language-bash">pip install &quot;https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.0.1/hik_code_reader-0.0.1-py3-none-win_amd64.whl&quot;
+<pre><code class="language-bash">pip install &quot;https://github.com/snippet0809/hik-mvcamera-control/releases/download/v0.0.2/hik_code_reader-0.0.2-py3-none-win_amd64.whl&quot;
 </code></pre>
-<p>其它版本请把 URL 中的 <strong><code>v0.0.1</code></strong> / <strong><code>0.0.1</code></strong> 换成你的 tag 与 <code>pyproject</code> 版本；<strong>wheel 完整文件名以该 Release 页 Assets 为准</strong>。</p>
+<p>其它版本请把 URL 中的 <strong><code>v0.0.2</code></strong> / <strong><code>0.0.2</code></strong> 换成你的 tag 与 <code>pyproject</code> 版本；<strong>wheel 完整文件名以该 Release 页 Assets 为准</strong>。</p>
 <p><strong>方式 B：像「私有 PyPI 源」一样用 PEP 503（依赖 Pages）</strong><br />
 在维护者已开启 <strong>GitHub Pages</strong>（<code>gh-pages</code>）且发过版的前提下：</p>
-<pre><code class="language-bash">pip install &quot;hik-code-reader==0.1.0&quot; \
+<pre><code class="language-bash">pip install &quot;hik-code-reader==0.0.2&quot; \
   --index-url &quot;https://snippet0809.github.io/hik-mvcamera-control/simple/&quot; \
   --trusted-host &quot;snippet0809.github.io&quot;
 </code></pre>
 <ul>
-<li>版本号 <strong><code>0.1.0</code></strong> 与 Git 标签 <strong><code>v0.1.0</code></strong> 对应（无 <code>v</code>）。  </li>
+<li>版本号 <strong><code>0.0.2</code></strong> 与 Git 标签 <strong><code>v0.0.2</code></strong> 对应（无 <code>v</code>）。  </li>
 <li><code>--trusted-host</code> 在部分企业网络下必填；若 pip 仍报错，请检查 HTTPS 与防火墙。  </li>
 <li>首次如何开 Pages、索引如何生成，见上文 <strong>「在 GitHub 上托管分发」</strong> 与 <strong>README</strong> 中维护者章节。</li>
 </ul>
@@ -419,7 +419,7 @@ print(cr.enum_devices())
 <pre><code class="language-text">github.com/snippet0809/hik-mvcamera-control/ffi/go
 </code></pre>
 <p><strong>安装指定版本</strong>（与已发布的 <strong><code>vX.Y.Z</code></strong> / 自动打的 <strong><code>ffi/go/vX.Y.Z</code></strong> 一致）：</p>
-<pre><code class="language-bash">go get github.com/snippet0809/hik-mvcamera-control/ffi/go@v0.1.0
+<pre><code class="language-bash">go get github.com/snippet0809/hik-mvcamera-control/ffi/go@v0.0.2
 </code></pre>
 <p><strong>代码中导入</strong>：</p>
 <pre><code class="language-go">import &quot;github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr&quot;
@@ -428,6 +428,7 @@ print(cr.enum_devices())
 <ul>
 <li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（<code>.lib</code> + 运行时 <code>dll</code>）；<strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，与用 MSVC 编出的 <code>hik_code_reader.dll</code> 不矛盾。<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
 <li><strong>Windows 运行时 DLL</strong>：<code>hikcr</code> 在 cgo 加载前会按与上文 <strong>Python（Windows）</strong> 相同的规则调用 <code>AddDllDirectory</code>（<code>GENICAM_GENTL*</code>、<code>MVCAM_GENICAM_CLPROTOCOL</code>、<code>Path</code> 启发式，以及 <strong><code>HIK_CODE_READER_DLL</code></strong> 所在目录），便于解析 <code>MvCodeReaderCtrl.dll</code> 等依赖。  </li>
+<li><strong>BCR 回调</strong>：<code>RegisterBcrCallbackForSerial(序列号, func)</code> 按序列号绑定；未注册序列号上的读码结果静默丢弃。  </li>
 <li><strong>私有仓库</strong>：<br />
 <code>go env -w GOPRIVATE=github.com/snippet0809/*</code><br />
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
