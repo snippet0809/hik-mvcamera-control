@@ -15,8 +15,8 @@ package hikcr
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"
 
-// Must match cgo-generated signature (see _cgo_export / prolog); do not use `extern void f();` — that is void(void) and conflicts.
-extern void hikcrGoBcrShim(const char *serial_utf8, char **codes, int code_count, void *user_data);
+// Must match cgo-generated //export signature exactly (Go *C.char → char*, not const char* — otherwise gcc conflicts with _cgo_export.c).
+extern void hikcrGoBcrShim(char *serial_utf8, char **codes, int code_count, void *user_data);
 
 // Return //export shim as HikCrBcrCallback (Go cannot reference C.hikcrGoBcrShim; go#19837).
 HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
