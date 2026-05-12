@@ -38,11 +38,18 @@ CodeReader::CodeReader(const std::string &serialNumber)
     }
 }
 
+// 析构时须先尽量停流并 CloseDevice，再 DestroyHandle；否则部分固件上会出现下次 MV_CODEREADER_OpenDevice 报 0x80020000。
 CodeReader::~CodeReader() {
     if (handle == nullptr) {
         return;
     }
+    try {
+        close();
+    } catch (...) {
+        // 析构阶段不再向外抛异常；尽力释放后再销毁句柄
+    }
     MV_CODEREADER_DestroyHandle(handle);
+    handle = nullptr;
 }
 
 /**
