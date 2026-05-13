@@ -310,7 +310,7 @@
 <li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号与 GigE 导出 IP 等信息（见 <code>src/code_reader/device_info.cpp</code>）。</li>
 <li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、可选 <code>CodeReaderOpenParams</code>、BCR 回调与起停流等；按序列号操作）。</li>
 <li><strong>读码回调</strong>：通过 <code>startDevice</code> 第三参传入；<code>std::nullopt</code> 保留已有登记，空 <code>std::function</code> 可取消该序列号回调。<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
-<li><strong>改参 / GenICam</strong>：常用项通过 <code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 在起流前写入（当前含触发模式/触发源等）；其它节点不再经本库对外暴露。</li>
+<li><strong>改参 / GenICam</strong>：<code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 含默认值，起流前写入；按需覆盖各成员即可。</li>
 <li><strong>GigE 枚举</strong>：<code>enumDevice</code> / <code>hik_cr_enum_devices</code> 仍返回当前 <strong>导出 IP</strong>（<code>netExportIp</code>）等摘要，便于展示与日志；本库不再提供改 IP 的封装。</li>
 <li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>ffi/go</code></strong>。</li>
 </ul>
