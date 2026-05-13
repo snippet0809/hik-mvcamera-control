@@ -3,24 +3,11 @@
     {
       "name": "Win32",
       "includePath": [
-        "${workspaceFolder}/include",
         "${workspaceFolder}/src/code_reader",
-        "${workspaceFolder}/include/MvCodeReader",
-        "${workspaceFolder}/build/_deps/googletest-src/googletest/include"
+        "${workspaceFolder}/include/MvCodeReader"
       ],
-      "browse": {
-        "path": [
-          "${workspaceFolder}/include",
-          "${workspaceFolder}/src/code_reader",
-          "${workspaceFolder}/include/MvCodeReader",
-          "${workspaceFolder}/build/_deps/googletest-src/googletest/include"
-        ]
-      },
-      "defines": [],
       "cStandard": "c17",
-      "cppStandard": "c++17",
-      "intelliSenseMode": "windows-msvc-x64",
-      "compileCommands": "${workspaceFolder}/compile_commands.json"
+      "cppStandard": "c++17"
     }
   ],
   "version": 4
