@@ -24,14 +24,13 @@ flowchart TB
 ```
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
-- **Python 正式包**：`python/` 下 `build` 打 wheel，CI / 发版仅将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`；**不把海康运行时 DLL 绑在「开发机是否安装 MVS」上**。终端环境通过安装 MVS/IDMVS Runtime 或你方**专用打包流水线**（自托管 Runner、私有制品等）提供 ``MvCodeReaderCtrl.dll`` 等。  
-- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 CI 与 `go.dev/issue/20982`）。
+- **Python 正式包**：`python/` 下 `build` 打 wheel，**`release.yml` 发版**仅将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`；**不把海康运行时 DLL 绑在「开发机是否安装 MVS」上**。终端环境通过安装 MVS/IDMVS Runtime 或你方**专用打包流水线**（自托管 Runner、私有制品等）提供 ``MvCodeReaderCtrl.dll`` 等。  
+- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 `go.dev/issue/20982`）。
 
 ### GitHub Actions 在流程中的位置
 
 | 环节 | Workflow | 作用（简述） |
 |------|----------|-------------|
-| 日常合并 | **`ci.yml`** | Windows 上编 DLL + wheel，Go 侧 `gofmt` / `mod tidy` / 可选 `go build`。 |
 | 发版 | **`release.yml`** | 打 tag `v*` → 同步 `pyproject` 版本、构建产物、GitHub Release、**`gh-pages`**（含 PEP 503 + 主页）、`ffi/go/v*` 标签。 |
 | 文档页增量 | **`pages-readme.yml`** | 仅 **`main`/`master`** 上 **README** 或 **`.github/scripts/`** 变更时，重生成 **主页** `index.html`，保留已有 **`simple/`**。 |
 
@@ -132,7 +131,7 @@ print(cr.enum_devices())
 
 **pip 安装后提示找不到 DLL / WinError 126 / 0xc0000135**  
 
-- **公共 wheel** 不含海康运行时 ``*.dll``（CI 不假设维护者电脑装了 MVS）。请在 **运行工控机** 上安装 **MVS/IDMVS RunTime**（或与 SDK 版本匹配的官方运行库），使 **`Path`** / **`GENICAM_GENTL64_PATH`** / **`MVCAM_GENICAM_CLPROTOCOL`** 等到位。  
+- **公共 wheel** 不含海康运行时 ``*.dll``（打包流程不假设维护者电脑装了 MVS）。请在 **运行工控机** 上安装 **MVS/IDMVS RunTime**（或与 SDK 版本匹配的官方运行库），使 **`Path`** / **`GENICAM_GENTL64_PATH`** / **`MVCAM_GENICAM_CLPROTOCOL`** 等到位。  
 - 若你要 **免安装分发**：在你方**固定版本、可复现**的打包环境（例如已装对应 MVS 的 **自托管 Runner**、或从**私有制品库**取与 SDK 锁定的 DLL 集）里组装配应用，**不要**依赖「开发 SDK 的那台 PC」是否装了 Runtime。  
 - **Python（Windows）**在 `ctypes` 加载前：将 **`hik_code_reader.dll` 所在目录**置于 **`PATH` 与 `add_dll_directory` 优先**，再补充上述海康变量与 **`Path`** 中含 **`MVS` / `IDMVS` / `MvSDK` / `MvCode`** 的目录；并使用 **`LoadLibraryEx`** 标志，便于把 **`MvCodeReaderCtrl.dll`** 等与 `hik_code_reader.dll` **放在同一目录**时能被解析。  
 - 若仍失败：用依赖查看工具打开 **`hik_code_reader.dll`** 核对缺失的 `.dll`；并确认 **VC++ x64 运行库**已安装。
@@ -170,7 +169,6 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 
 | Workflow | 说明 |
 |----------|------|
-| **CI**（`.github/workflows/ci.yml`） | `pull_request` / 推送到 `main`、`master`：Windows 上构建 DLL、**wheel**，并做 **Go**（`gofmt`、`go mod tidy`、可选 `go build`）校验（不落库、不上传产物）。 |
 | **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）、自动 **`ffi/go/v*`** 标签。 |
 | **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`** 或 **`.github/scripts/`** 下站点生成脚本时：只重部署 **根 `index.html`**（入口为 **`generate_pages_site.py`**），`keep_files` 保留 **`simple/`**。 |
 
@@ -202,7 +200,7 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-**CI / 无 VS2022 生成器时**可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 `build/hik_code_reader.dll`）：
+**无 VS2022 生成器时**可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 `build/hik_code_reader.dll`）：
 
 ```powershell
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
