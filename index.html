@@ -308,11 +308,10 @@
 <h2>功能概览（读码器 C++ 封装）</h2>
 <ul>
 <li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号与 GigE 导出 IP 等信息（见 <code>src/code_reader/device_info.cpp</code>）。</li>
-<li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、注册图像回调、起停取流等；按序列号操作）。</li>
-<li><strong>读码回调</strong>：<code>registerImageCallbackForSerial</code>（按序列号注册 BCR 结果列表；未注册则静默丢弃）；<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
-<li><strong>改参前置</strong>：<code>openDeviceForParameters</code> 将设备置为 <strong>Open</strong>（已 OpenDevice、未取流）。正在取流时须先 <code>stopDevice</code>，否则会抛 <code>std::logic_error</code>。</li>
-<li><strong>GigE 网络</strong>：<code>setIp</code> 改 IP/掩码/网关（与 GenICam 写参不同类；成功后常 <code>destroyDevice</code> 释放本地缓存）。</li>
-<li><strong>GenICam 写参</strong>：<code>setIntValue</code> / <code>setFloatValue</code> / <code>setBoolValue</code> / <code>setStringValue</code> / <code>setEnumValue</code> / <code>setEnumValueByString</code>（均须先处于 Open，约定同 <code>openDeviceForParameters</code>）。</li>
+<li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、可选 <code>CodeReaderOpenParams</code>、BCR 回调与起停流等；按序列号操作）。</li>
+<li><strong>读码回调</strong>：通过 <code>startDevice</code> 第三参传入；<code>std::nullopt</code> 保留已有登记，空 <code>std::function</code> 可取消该序列号回调。<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
+<li><strong>改参 / GenICam</strong>：常用项通过 <code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 在起流前写入（当前含触发模式/触发源等）；其它节点不再经本库对外暴露。</li>
+<li><strong>GigE 枚举</strong>：<code>enumDevice</code> / <code>hik_cr_enum_devices</code> 仍返回当前 <strong>导出 IP</strong>（<code>netExportIp</code>）等摘要，便于展示与日志；本库不再提供改 IP 的封装。</li>
 <li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>ffi/go</code></strong>。</li>
 </ul>
 <h2>在 GitHub 上托管分发（维护者）</h2>
@@ -519,7 +518,7 @@ cmake --build build
 <h2>运行与部署说明</h2>
 <ol>
 <li>在目标机器安装海康读码器/视觉设备所需 <strong>驱动与运行库</strong>（版本需与 SDK 匹配）。</li>
-<li>GigE 设备注意网卡、防火墙与网段；改 IP 前须 <code>openDeviceForParameters</code> 使设备处于 <strong>Open</strong>，并阅读 <code>setIp</code> 注释（改 IP 后设备常重启，本地句柄会被移除）。</li>
+<li>GigE 设备注意网卡、防火墙与网段；改 IP 请使用海康官方工具/SDK，本仓库封装不再提供 <code>setIp</code>。</li>
 <li>将 SDK 提供的 <strong>DLL</strong>（若静态链仍依赖运行时）放在可执行文件同目录或系统 <code>PATH</code> 中，按官方文档为准。</li>
 </ol>
 <h3>读码器 SDK 使用要点（与 <code>.docs</code> 开发指南 CHM 一致）</h3>
