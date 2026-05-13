@@ -41,7 +41,7 @@ flowchart TB
 - **枚举设备**：`enumDevice()`，返回序列号与 GigE 导出 IP 等信息（见 `src/code_reader/device_info.cpp`）。
 - **运行控制**：`startDevice` / `stopDevice`（内部完成打开设备、可选 `CodeReaderOpenParams`、BCR 回调与起停流等；按序列号操作）。
 - **读码回调**：通过 `startDevice` 第三参传入；`std::nullopt` 保留已有登记，空 `std::function` 可取消该序列号回调。**软触发**：`triggerDevice`（仅当设备处于取流 Grabbing）。
-- **改参 / GenICam**：常用项通过 `startDevice` 第二参 `CodeReaderOpenParams` 在起流前写入（当前含触发模式/触发源等）；其它节点不再经本库对外暴露。
+- **改参 / GenICam**：`startDevice` 第二参 `CodeReaderOpenParams` 含默认值，起流前写入；按需覆盖各成员即可。
 - **GigE 枚举**：`enumDevice` / `hik_cr_enum_devices` 仍返回当前 **导出 IP**（`netExportIp`）等摘要，便于展示与日志；本库不再提供改 IP 的封装。
 - **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`ffi/go`**。
 

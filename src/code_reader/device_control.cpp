@@ -103,21 +103,14 @@ void stopDevice(const std::string &sn) {
 }
 
 /**
- * 启动指定序列号设备：确保句柄存在后进入取流状态；若 @p params 含待写项，则在 Open 下写入后再 StartGrabbing。
- *
- * @param sn 设备序列号。
+ * 启动指定序列号设备：Open 阶段写入 @p params（默认见 `CodeReaderOpenParams`），再 StartGrabbing。
+ * 已在取流时忽略 @p params，仅处理 @p onBcrCodes。
  */
 void startDevice(const std::string &sn, const CodeReaderOpenParams &params,
                  const std::optional<CodeReaderBcrCallback> &onBcrCodes) {
     CodeReader *cr = getDevice(sn, true);
-    const bool hasOpenPhaseWrites =
-        params.triggerMode.has_value() || params.triggerSource.has_value();
 
     if (cr->status == CodeReaderStatus::Grabbing) {
-        if (hasOpenPhaseWrites) {
-            throw std::logic_error(
-                "startDevice：当前已在取流，无法在携带 CodeReaderOpenParams 时改参；请先 stopDevice");
-        }
         if (onBcrCodes.has_value()) {
             registerImageCallbackForSerial(sn, *onBcrCodes);
         }
@@ -128,17 +121,13 @@ void startDevice(const std::string &sn, const CodeReaderOpenParams &params,
         registerImageCallbackForSerial(sn, *onBcrCodes);
     }
 
-    if (hasOpenPhaseWrites) {
-        if (cr->status == CodeReaderStatus::Connected) {
-            cr->open();
-        }
-        if (params.triggerMode.has_value()) {
-            setEnumValueByString(sn, "TriggerMode", *params.triggerMode);
-        }
-        if (params.triggerSource.has_value()) {
-            setEnumValueByString(sn, "TriggerSource", *params.triggerSource);
-        }
+    if (cr->status == CodeReaderStatus::Connected) {
+        cr->open();
     }
+    setEnumValueByString(sn, "TriggerMode", params.triggerMode);
+    setEnumValueByString(sn, "TriggerSource", params.triggerSource);
+    setBoolValue(sn, "CODE128", params.code128);
+    setBoolValue(sn, "QRCode", params.qrcode);
 
     cr->startGrabbing();
 }

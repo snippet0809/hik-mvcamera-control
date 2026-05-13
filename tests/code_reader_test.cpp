@@ -52,11 +52,9 @@ TEST(CodeReaderTest, SmokeEnumGrabTriggerStopAndReopen) {
     logTestStep("02_device_selected | 已选定首台设备");
 
     std::atomic<int> bcrEvents{0};
-    CodeReaderOpenParams openParams;
-    openParams.triggerMode = std::string("On");
-    openParams.triggerSource = std::string("Software");
     ASSERT_NO_THROW(startDevice(
-        sn, openParams,
+        sn,
+        {},
         [&](std::vector<std::string> codeArr) {
             const int n = ++bcrEvents;
             std::cout << "[test] BCR #" << n << " codes=";
@@ -78,7 +76,7 @@ TEST(CodeReaderTest, SmokeEnumGrabTriggerStopAndReopen) {
     logTestStep("07_phase1_stopDevice_done | 阶段1：停流完成");
 
     // stop 后为 Connected；再次起流并应用软触发参数（回调表仍保留）
-    ASSERT_NO_THROW(startDevice(sn, openParams, std::nullopt));
+    ASSERT_NO_THROW(startDevice(sn, {}, std::nullopt));
     logTestStep("08_phase2_startDevice_done | 阶段2：开始取流完成");
     for (int i = 0; i < kTriggersPerPhase; ++i) {
         ASSERT_NO_THROW(triggerDevice(sn)) << "trigger phase2 " << i;
