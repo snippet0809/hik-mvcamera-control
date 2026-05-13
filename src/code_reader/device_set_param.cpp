@@ -1,24 +1,21 @@
 /**
  * @file device_set_param.cpp
- * @brief GenICam 节点写参（setIntValue 等）；要求非取流；Connected 时会先 OpenDevice。
+ * @brief GenICam 写参；取流中禁止。`applyCodeReaderOpenParams` 供起流路径在已 Open 句柄上批量写入。
  */
 
 #include "MvCodeReaderCtrl.h"
+#include "code_reader.h"
 #include "code_reader_detail.h"
 #include <stdexcept>
 
+static void checkSdkOk(int ok, const char *apiName) {
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error(std::string(apiName) + " error: " + toHexStr(ok));
+    }
+}
+
 namespace {
 
-    void checkSdkOk(int ok, const char *apiName) {
-        if (ok != MV_CODEREADER_OK) {
-            throw std::runtime_error(std::string(apiName) + " error: " + toHexStr(ok));
-        }
-    }
-
-    /**
-     * 参数设置要求设备处于 Open（已 OpenDevice、未取流）。
-     * Grabbing 时抛 std::logic_error；Connected 时在本函数内调用 open()；无句柄时创建实例（需已掌握合法序列号）。
-     */
     CodeReader *requireOpenForParameter(const std::string &sn, const char *caller) {
         CodeReader *d = getDevice(sn, true);
         if (d->status == CodeReaderStatus::Grabbing) {
@@ -31,7 +28,6 @@ namespace {
         return d;
     }
 
-    /** 在 Open 状态下调用 apiName 对应的 SDK Set*。 */
     template <typename F>
     void setParamOpened(const std::string &sn, const char *apiName, F &&f) {
         CodeReader *device = requireOpenForParameter(sn, apiName);
@@ -74,4 +70,20 @@ void setEnumValueByString(const std::string &sn, const std::string &key, const s
     setParamOpened(sn, "MV_CODEREADER_SetEnumValueByString", [&](void *h) {
         return MV_CODEREADER_SetEnumValueByString(h, key.c_str(), symbolic.c_str());
     });
+}
+
+void applyCodeReaderOpenParams(CodeReader *d, const CodeReaderOpenParams &params) {
+    if (d == nullptr) {
+        throw std::logic_error("applyCodeReaderOpenParams: null device");
+    }
+    if (d->status != CodeReaderStatus::Open) {
+        throw std::logic_error("applyCodeReaderOpenParams: device must be Open");
+    }
+    void *h = d->handle;
+    checkSdkOk(MV_CODEREADER_SetEnumValueByString(h, "TriggerMode", params.triggerMode.c_str()),
+               "MV_CODEREADER_SetEnumValueByString(TriggerMode)");
+    checkSdkOk(MV_CODEREADER_SetEnumValueByString(h, "TriggerSource", params.triggerSource.c_str()),
+               "MV_CODEREADER_SetEnumValueByString(TriggerSource)");
+    checkSdkOk(MV_CODEREADER_SetBoolValue(h, "CODE128", params.code128), "MV_CODEREADER_SetBoolValue(CODE128)");
+    checkSdkOk(MV_CODEREADER_SetBoolValue(h, "QRCode", params.qrcode), "MV_CODEREADER_SetBoolValue(QRCode)");
 }

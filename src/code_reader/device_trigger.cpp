@@ -1,43 +1,28 @@
 /**
  * @file device_trigger.cpp
- * @brief 图像回调注册与软触发：对接 MV_CODEREADER_RegisterImageCallBack、SetCommandValue(TriggerSoftware)。
+ * @brief 图像回调登记、SDK 桥接与软触发（TriggerSoftware）。
  */
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
 #include "code_reader_detail.h"
-#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace {
 
-    /** 软触发命令节点名（GenICam 常见命名，具体以设备 XML 为准）。 */
     constexpr const char *kTriggerSoftware = "TriggerSoftware";
 
     using BcrCodes = std::vector<std::string>;
     using BcrUserCb = CodeReaderBcrCallback;
 
-    /** 序列号与回调分两列存，避免部分 Clang 对 ``pair<string, function<...>>`` 的 constexpr 诊断。 */
-    std::vector<std::string> g_callbackSerials;
-    std::vector<BcrUserCb> g_callbackFuncs;
+    std::unordered_map<std::string, BcrUserCb> g_bcrBySerial;
 
-    int findSerialIndex(const std::string &sn) {
-        const auto it = std::find(g_callbackSerials.begin(), g_callbackSerials.end(), sn);
-        if (it == g_callbackSerials.end()) {
-            return -1;
-        }
-        return static_cast<int>(it - g_callbackSerials.begin());
-    }
-
-    /**
-     * 从 MV_CODEREADER_IMAGE_OUT_INFO 中解析 BCR 结果，得到条码字符串列表。
-     * 假定 nResultType 已为 BCR；chResult 前 sizeof(MV_CODEREADER_RESULT_BCR) 字节为有效载荷。
-     */
     std::vector<std::string> extractBcrStrings(const MV_CODEREADER_IMAGE_OUT_INFO &info) {
         std::vector<std::string> out;
         if (info.nResultType != CodeReader_ResType_BCR) {
@@ -55,7 +40,6 @@ namespace {
         for (unsigned int i = 0; i < n; ++i) {
             const MV_CODEREADER_BCR_INFO &bi = bcr.stBcrInfo[i];
             const std::size_t cap = sizeof(bi.chCode);
-            // nLen 与缓冲区取较小有效长度，避免越界或未终止字符串
             std::size_t len = bi.nLen;
             if (len >= cap) {
                 len = cap - 1;
@@ -69,10 +53,6 @@ namespace {
         return out;
     }
 
-    /**
-     * SDK 要求的 __stdcall 图像回调桥接函数。
-     * pUser 为 CodeReader*，用于按序列号查找用户回调；未注册则静默返回。
-     */
     void __stdcall sdkImageCallbackBridge([[maybe_unused]] unsigned char *pData, MV_CODEREADER_IMAGE_OUT_INFO *pstFrameInfo,
                                           void *pUser) {
         if (pstFrameInfo == nullptr || pUser == nullptr) {
@@ -82,30 +62,21 @@ namespace {
             return;
         }
         auto *device = static_cast<CodeReader *>(pUser);
-        std::vector<std::string> codes = extractBcrStrings(*pstFrameInfo);
-        const int idx = findSerialIndex(device->serialNumber);
-        if (idx < 0 || !g_callbackFuncs[static_cast<std::size_t>(idx)]) {
+        BcrCodes codes = extractBcrStrings(*pstFrameInfo);
+        const auto it = g_bcrBySerial.find(device->serialNumber);
+        if (it == g_bcrBySerial.end() || !it->second) {
             return;
         }
-        BcrUserCb userCb = g_callbackFuncs[static_cast<std::size_t>(idx)];
-        userCb(std::move(codes));
+        it->second(std::move(codes));
     }
 
 } // namespace
 
 void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCallback &callback) {
-    const int idx = findSerialIndex(sn);
     if (callback) {
-        if (idx >= 0) {
-            g_callbackFuncs[static_cast<std::size_t>(idx)] = callback;
-        } else {
-            g_callbackSerials.push_back(sn);
-            g_callbackFuncs.push_back(callback);
-        }
-    } else if (idx >= 0) {
-        const auto i = static_cast<std::size_t>(idx);
-        g_callbackSerials.erase(g_callbackSerials.begin() + static_cast<std::ptrdiff_t>(i));
-        g_callbackFuncs.erase(g_callbackFuncs.begin() + static_cast<std::ptrdiff_t>(i));
+        g_bcrBySerial[sn] = callback;
+    } else {
+        g_bcrBySerial.erase(sn);
     }
     CodeReader *d = getDevice(sn, false);
     if (d != nullptr && d->status == CodeReaderStatus::Grabbing) {
@@ -113,18 +84,14 @@ void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCa
     }
 }
 
-/**
- * 在 MV_CODEREADER_StartGrabbing 之前（或取流中刷新），按序列号把 SDK 图像回调绑定到桥接函数。
- * 无该序列号用户回调时向 SDK 传 nullptr，等价于不向用户派发读码结果。
- */
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     if (device == nullptr || device->handle == nullptr) {
         return;
     }
     BcrUserCb userCb;
-    const int idx = findSerialIndex(device->serialNumber);
-    if (idx >= 0) {
-        userCb = g_callbackFuncs[static_cast<std::size_t>(idx)];
+    const auto it = g_bcrBySerial.find(device->serialNumber);
+    if (it != g_bcrBySerial.end()) {
+        userCb = it->second;
     }
     void(__stdcall * thunk)(unsigned char *, MV_CODEREADER_IMAGE_OUT_INFO *, void *) =
         userCb ? sdkImageCallbackBridge : nullptr;
@@ -135,9 +102,6 @@ void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     }
 }
 
-/**
- * 软触发：要求设备已在取流（Grabbing），否则抛 logic_error。
- */
 void triggerDevice(const std::string &sn) {
     CodeReader *d = getDevice(sn, false);
     if (d == nullptr) {

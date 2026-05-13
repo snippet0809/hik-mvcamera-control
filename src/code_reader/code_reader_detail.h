@@ -37,11 +37,13 @@ public:
 };
 
 CodeReader *getDevice(const std::string &sn, bool createIfNotExist);
-void destroyDevice(const std::string &sn);
+
+struct CodeReaderOpenParams;
+void applyCodeReaderOpenParams(CodeReader *device, const CodeReaderOpenParams &params);
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 
-/** BCR 回调表与 SDK 绑定；仅供本库 .cpp / C API 实现调用，非 `code_reader.h` 公开 API。 */
+/** 按序列号登记 BCR 回调并在取流中刷新 SDK 绑定；仅供实现文件与 C API 调用。 */
 void registerImageCallbackForSerial(const std::string &sn,
                                     const std::function<void(std::vector<std::string>)> &callback);
 

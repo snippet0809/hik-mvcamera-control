@@ -1,7 +1,6 @@
 /**
  * @file device_info.cpp
- * @brief 设备枚举与句柄管理：在线列表、按序列号创建/缓存/销毁 CodeReader（SDK 句柄）。
- * @note 状态迁移（open/close/startGrabbing）见 device_control.cpp。
+ * @brief 设备枚举与按序列号缓存的 `CodeReader`（SDK 句柄）；状态迁移见 device_control.cpp。
  */
 
 #include "MvCodeReaderCtrl.h"
@@ -24,12 +23,6 @@ namespace {
 
 } // namespace
 
-/**
- * 按序列号创建 SDK 句柄，状态为 Connected（尚未 OpenDevice）。
- *
- * @param serialNumber 设备序列号
- * @throws std::runtime_error MV_CODEREADER_CreateHandleBySerialNumber 失败时抛出
- */
 CodeReader::CodeReader(const std::string &serialNumber)
     : serialNumber(serialNumber), handle(nullptr), status(CodeReaderStatus::Connected) {
     int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, this->serialNumber.c_str());
@@ -52,12 +45,6 @@ CodeReader::~CodeReader() {
     handle = nullptr;
 }
 
-/**
- * 枚举在线读码器，填充序列号与 GigE 相关摘要。
- *
- * @return 设备信息列表（仅传输层为 GigE 的项；其余类型跳过）。
- * @throws std::runtime_error MV_CODEREADER_EnumCodeReader 失败时抛出
- */
 std::vector<CodeReaderInfo> enumDevice() {
     MV_CODEREADER_DEVICE_INFO_LIST stDevList{};
     int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
@@ -81,25 +68,13 @@ std::vector<CodeReaderInfo> enumDevice() {
     return infos;
 }
 
-/**
- * 按序列号查找或创建实例。
- * @return createIfNotExist 为 false 且不存在时返回 nullptr
- * @throws std::runtime_error createIfNotExist 为 true 且 MV_CODEREADER_CreateHandleBySerialNumber 失败时抛出
- */
 CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
-    auto it = deviceMap.find(sn);
+    const auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
         return it->second.get();
     }
-    if (createIfNotExist) {
-        auto cr = std::make_shared<CodeReader>(sn);
-        deviceMap[sn] = cr;
-        return cr.get();
+    if (!createIfNotExist) {
+        return nullptr;
     }
-    return nullptr;
-}
-
-/** 从缓存移除该序列号实例（如上层决定丢弃会话）。 */
-void destroyDevice(const std::string &sn) {
-    deviceMap.erase(sn);
+    return deviceMap.emplace(sn, std::make_shared<CodeReader>(sn)).first->second.get();
 }

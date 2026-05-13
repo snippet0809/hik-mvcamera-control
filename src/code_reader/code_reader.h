@@ -2,8 +2,8 @@
 
 /**
  * @file code_reader.h
- * @brief 海康读码器简易 C++ 封装：按序列号枚举设备、启动/停止取流、注册读码回调、软触发等。
- * @note 典型取流路径由 startDevice/stopDevice 在内部完成打开与起停流；起流前参数见 `CodeReaderOpenParams`。
+ * @brief 海康读码器 C++ 封装：对外仅 `enumDevice` / `startDevice` / `stopDevice` / `triggerDevice`；
+ *      起流前参数见 `CodeReaderOpenParams`，读码回调在 `startDevice` 第三参（可选）中登记。
  */
 
 #include <functional>
