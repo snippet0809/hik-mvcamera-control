@@ -211,8 +211,8 @@
       <h1>hik-mvcamera-control</h1>
       <p class="hero-lead">围绕海康机器人 机器视觉 SDK 的本地封装与工程骨架：仓库中已包含 读码器（MvCodeReader） 的头文件与静态库，当前 src 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 稳定 C ABI（include/hik_code_reader/c_api.h + c_api.cpp），便于 Python（ctypes） 与 Go（cgo） 等语言加载 hik_code_reader 共享库调用。include/lib 下同时提供了 工业相机（MvCamera） 相关 SDK 文件，便于后续扩展相机侧逻辑。</p>
       <div class="meta">
-        <span class="pill">Release v0.0.4</span>
-        <span>与发版 v0.0.4 同步；Python 包见 pip 索引（PEP 503）。文档区随 README 更新。</span>
+        <span class="pill">main</span>
+        <span>README 变更后自动刷新；pip 索引在发版时更新。</span>
       </div>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://snippet0809.github.io/hik-mvcamera-control/simple/hik-code-reader/">pip 索引（PEP 503）· hik-code-reader</a>
@@ -279,8 +279,8 @@
 </code></pre>
 <ul>
 <li><strong>构建</strong>：根目录 <strong>CMake</strong> 生成静态库、测试与 <strong>共享库</strong>（目标名见 <code>CMakeLists.txt</code>）。  </li>
-<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，CI / 发版仅将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>；<strong>不把海康运行时 DLL 绑在「开发机是否安装 MVS」上</strong>。终端环境通过安装 MVS/IDMVS Runtime 或你方<strong>专用打包流水线</strong>（自托管 Runner、私有制品等）提供 <code>MvCodeReaderCtrl.dll</code> 等。  </li>
-<li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库；<strong>DLL 仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 CI 与 <code>go.dev/issue/20982</code>）。</li>
+<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，<strong><code>release.yml</code> 发版</strong>仅将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>；<strong>不把海康运行时 DLL 绑在「开发机是否安装 MVS」上</strong>。终端环境通过安装 MVS/IDMVS Runtime 或你方<strong>专用打包流水线</strong>（自托管 Runner、私有制品等）提供 <code>MvCodeReaderCtrl.dll</code> 等。  </li>
+<li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库；<strong>DLL 仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
 </ul>
 <h3>GitHub Actions 在流程中的位置</h3>
 <table>
@@ -292,11 +292,6 @@
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>日常合并</td>
-<td><strong><code>ci.yml</code></strong></td>
-<td>Windows 上编 DLL + wheel，Go 侧 <code>gofmt</code> / <code>mod tidy</code> / 可选 <code>go build</code>。</td>
-</tr>
 <tr>
 <td>发版</td>
 <td><strong><code>release.yml</code></strong></td>
@@ -409,7 +404,7 @@ print(cr.enum_devices())
 </code></pre>
 <p><strong>pip 安装后提示找不到 DLL / WinError 126 / 0xc0000135</strong>  </p>
 <ul>
-<li><strong>公共 wheel</strong> 不含海康运行时 <code>*.dll</code>（CI 不假设维护者电脑装了 MVS）。请在 <strong>运行工控机</strong> 上安装 <strong>MVS/IDMVS RunTime</strong>（或与 SDK 版本匹配的官方运行库），使 <strong><code>Path</code></strong> / <strong><code>GENICAM_GENTL64_PATH</code></strong> / <strong><code>MVCAM_GENICAM_CLPROTOCOL</code></strong> 等到位。  </li>
+<li><strong>公共 wheel</strong> 不含海康运行时 <code>*.dll</code>（打包流程不假设维护者电脑装了 MVS）。请在 <strong>运行工控机</strong> 上安装 <strong>MVS/IDMVS RunTime</strong>（或与 SDK 版本匹配的官方运行库），使 <strong><code>Path</code></strong> / <strong><code>GENICAM_GENTL64_PATH</code></strong> / <strong><code>MVCAM_GENICAM_CLPROTOCOL</code></strong> 等到位。  </li>
 <li>若你要 <strong>免安装分发</strong>：在你方<strong>固定版本、可复现</strong>的打包环境（例如已装对应 MVS 的 <strong>自托管 Runner</strong>、或从<strong>私有制品库</strong>取与 SDK 锁定的 DLL 集）里组装配应用，<strong>不要</strong>依赖「开发 SDK 的那台 PC」是否装了 Runtime。  </li>
 <li><strong>Python（Windows）</strong>在 <code>ctypes</code> 加载前：将 <strong><code>hik_code_reader.dll</code> 所在目录</strong>置于 <strong><code>PATH</code> 与 <code>add_dll_directory</code> 优先</strong>，再补充上述海康变量与 <strong><code>Path</code></strong> 中含 <strong><code>MVS</code> / <code>IDMVS</code> / <code>MvSDK</code> / <code>MvCode</code></strong> 的目录；并使用 <strong><code>LoadLibraryEx</code></strong> 标志，便于把 <strong><code>MvCodeReaderCtrl.dll</code></strong> 等与 <code>hik_code_reader.dll</code> <strong>放在同一目录</strong>时能被解析。  </li>
 <li>若仍失败：用依赖查看工具打开 <strong><code>hik_code_reader.dll</code></strong> 核对缺失的 <code>.dll</code>；并确认 <strong>VC++ x64 运行库</strong>已安装。</li>
@@ -442,10 +437,6 @@ print(cr.enum_devices())
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><strong>CI</strong>（<code>.github/workflows/ci.yml</code>）</td>
-<td><code>pull_request</code> / 推送到 <code>main</code>、<code>master</code>：Windows 上构建 DLL、<strong>wheel</strong>，并做 <strong>Go</strong>（<code>gofmt</code>、<code>go mod tidy</code>、可选 <code>go build</code>）校验（不落库、不上传产物）。</td>
-</tr>
 <tr>
 <td><strong>Release</strong>（<code>.github/workflows/release.yml</code>）</td>
 <td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）、自动 <strong><code>ffi/go/v*</code></strong> 标签。</td>
@@ -514,7 +505,7 @@ print(cr.enum_devices())
 cmake --build build --config Release
 ctest --test-dir build -C Release
 </code></pre>
-<p><strong>CI / 无 VS2022 生成器时</strong>可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 <code>build/hik_code_reader.dll</code>）：</p>
+<p><strong>无 VS2022 生成器时</strong>可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 <code>build/hik_code_reader.dll</code>）：</p>
 <pre><code class="language-powershell">cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 </code></pre>
