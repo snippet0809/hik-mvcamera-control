@@ -2,10 +2,10 @@
 
 #include "hik_code_reader/c_api.h"
 #include "code_reader.h"
-#include "code_reader_detail.h"
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,6 +33,49 @@ bool copyTo(char *dst, size_t cap, const std::string &src) {
     }
     std::memcpy(dst, src.c_str(), src.size() + 1);
     return true;
+}
+
+CodeReaderOpenParams cppOpenParams(const HikCrOpenParams *c) {
+    CodeReaderOpenParams p{};
+    if (!c) {
+        return p;
+    }
+    if (c->trigger_mode && c->trigger_mode[0]) {
+        p.triggerMode = c->trigger_mode;
+    }
+    if (c->trigger_source && c->trigger_source[0]) {
+        p.triggerSource = c->trigger_source;
+    }
+    if (c->code128 >= 0) {
+        p.code128 = c->code128 != 0;
+    }
+    if (c->qrcode >= 0) {
+        p.qrcode = c->qrcode != 0;
+    }
+    return p;
+}
+
+std::optional<CodeReaderBcrCallback> cppBcr(int action, HikCrBcrCallback cb, void *user, const std::string &sn) {
+    if (action == HIK_CR_BCR_KEEP) {
+        return std::nullopt;
+    }
+    if (action == HIK_CR_BCR_CLEAR) {
+        return CodeReaderBcrCallback{};
+    }
+    if (action != HIK_CR_BCR_SET) {
+        throw std::invalid_argument("invalid bcr_action");
+    }
+    if (!cb) {
+        throw std::invalid_argument("bcr_action=HIK_CR_BCR_SET requires non-null bcr_cb");
+    }
+    return CodeReaderBcrCallback([cb, user, sn](std::vector<std::string> codeArr) {
+        std::vector<const char *> ptrs;
+        ptrs.reserve(codeArr.size());
+        for (const auto &s : codeArr) {
+            ptrs.push_back(s.c_str());
+        }
+        cb(sn.c_str(), ptrs.data(), static_cast<int>(ptrs.size()), user);
+    });
 }
 
 template <typename F>
@@ -93,11 +136,23 @@ HIK_CR_API void hik_cr_free_device_list(HikCrDeviceInfo *list) {
     delete[] list;
 }
 
-HIK_CR_API HikCrResult hik_cr_start_device(const char *serial_utf8) {
+HIK_CR_API HikCrResult hik_cr_start_device(const char *serial_utf8, const HikCrOpenParams *open_params,
+                                           int bcr_action, HikCrBcrCallback bcr_cb, void *bcr_user_data) {
     if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
     }
-    return wrap([&] { startDevice(serial_utf8); });
+    if (bcr_action != HIK_CR_BCR_KEEP && bcr_action != HIK_CR_BCR_SET && bcr_action != HIK_CR_BCR_CLEAR) {
+        err("bcr_action must be HIK_CR_BCR_KEEP, HIK_CR_BCR_SET, or HIK_CR_BCR_CLEAR");
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    if (bcr_action == HIK_CR_BCR_SET && !bcr_cb) {
+        err("HIK_CR_BCR_SET requires non-null bcr_cb");
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const std::string sn(serial_utf8);
+        startDevice(sn, cppOpenParams(open_params), cppBcr(bcr_action, bcr_cb, bcr_user_data, sn));
+    });
 }
 
 HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
@@ -105,28 +160,6 @@ HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { stopDevice(serial_utf8); });
-}
-
-HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *serial_utf8, HikCrBcrCallback cb,
-                                                               void *user_data) {
-    if (!nonNull(serial_utf8, "serial_utf8")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] {
-        const std::string sn(serial_utf8);
-        if (!cb) {
-            registerImageCallbackForSerial(sn, {});
-            return;
-        }
-        registerImageCallbackForSerial(sn, [cb, user_data, sn](std::vector<std::string> codeArr) {
-            std::vector<const char *> ptrs;
-            ptrs.reserve(codeArr.size());
-            for (const auto &s : codeArr) {
-                ptrs.push_back(s.c_str());
-            }
-            cb(sn.c_str(), ptrs.data(), static_cast<int>(ptrs.size()), user_data);
-        });
-    });
 }
 
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {

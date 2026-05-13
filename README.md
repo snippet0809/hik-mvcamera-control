@@ -159,7 +159,7 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 
 - **cgo**：需本机可链接 `hik_code_reader`（`.lib` + 运行时 `dll`）；**C 编译器用 MinGW `gcc` 等**，与用 MSVC 编出的 `hik_code_reader.dll` 不矛盾。**Release** 附件中的 zip 含 `ffi/go` 与 `include/hik_code_reader`，可与同版 `dll`/`lib` 一起用于集成。  
 - **Windows 运行时 DLL**：`hikcr` 在 cgo 加载前会按与上文 **Python（Windows）** 相同的规则调用 `AddDllDirectory`（`GENICAM_GENTL*`、`MVCAM_GENICAM_CLPROTOCOL`、`Path` 启发式，以及 **`HIK_CODE_READER_DLL`** 所在目录），便于解析 `MvCodeReaderCtrl.dll` 等依赖。  
-- **BCR 回调**：`RegisterBcrCallbackForSerial(序列号, func)` 按序列号绑定；未注册序列号上的读码结果静默丢弃。  
+- **对外 ABI（业务四件）**：`hik_cr_enum_devices` / `hik_cr_start_device`（含 `HikCrOpenParams` 与 `HIK_CR_BCR_*` 登记或清除 BCR）/ `hik_cr_stop_device` / `hik_cr_trigger_device`；另有 `hik_cr_free_device_list`、`hik_cr_last_error_copy`。  
 - **私有仓库**：  
   `go env -w GOPRIVATE=github.com/snippet0809/*`  
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。

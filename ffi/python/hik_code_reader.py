@@ -1,34 +1,41 @@
-"""
-ctypes 封装 `hik_code_reader` C API（参考实现）。
-
-正式发布与 wheel 构建以仓库内 ``python/hik_code_reader`` 为准（包内 ``_native/``，含 Windows 下 DLL 搜索路径与 ``LoadLibraryEx`` 行为）。
-本文件为精简参考；生产环境请使用 ``python/hik_code_reader`` 包。
-"""
+"""ctypes 封装 `hik_code_reader` C API（参考）。正式发布以 ``python/hik_code_reader`` 为准。"""
 from __future__ import annotations
 
 import os
 import ctypes
-from ctypes import (
-    CFUNCTYPE,
-    POINTER,
-    Structure,
-    c_char_p,
-    c_int,
-    c_size_t,
-    c_void_p,
-)
+from ctypes import CFUNCTYPE, POINTER, Structure, byref, c_char_p, c_int, c_size_t, c_void_p, cast
+from dataclasses import dataclass
 
 HIK_CR_SERIAL_MAX = 256
 HIK_CR_IPV4_STR_MAX = 64
-
 HIK_CR_OK = 0
 HIK_CR_ERR_UNKNOWN = 1
 HIK_CR_ERR_LOGIC = 2
 HIK_CR_ERR_RUNTIME = 3
 HIK_CR_ERR_INVALID_ARG = 4
 HIK_CR_ERR_NO_MEMORY = 5
+HIK_CR_BCR_KEEP = 0
+HIK_CR_BCR_SET = 1
+HIK_CR_BCR_CLEAR = 2
 
 BcrCallback = CFUNCTYPE(None, c_char_p, POINTER(c_char_p), c_int, c_void_p)
+
+
+@dataclass
+class OpenParams:
+    trigger_mode: str | None = None
+    trigger_source: str | None = None
+    code128: bool | None = None
+    qrcode: bool | None = None
+
+
+class HikCrOpenParams(Structure):
+    _fields_ = [
+        ("trigger_mode", c_char_p),
+        ("trigger_source", c_char_p),
+        ("code128", c_int),
+        ("qrcode", c_int),
+    ]
 
 
 class HikCrDeviceInfo(Structure):
@@ -46,6 +53,7 @@ def _load_dll(path: str | None) -> ctypes.CDLL:
 class HikCodeReader:
     def __init__(self, dll_path: str | None = None) -> None:
         self._lib = _load_dll(dll_path)
+        self._bcr_keepalive: dict[str, BcrCallback] = {}
         self._setup_prototypes()
 
     def _setup_prototypes(self) -> None:
@@ -54,15 +62,12 @@ class HikCodeReader:
         L.hik_cr_enum_devices.restype = c_int
         L.hik_cr_free_device_list.argtypes = [POINTER(HikCrDeviceInfo)]
         L.hik_cr_free_device_list.restype = None
-        for name, argtypes in [
-            ("hik_cr_start_device", [c_char_p]),
-            ("hik_cr_stop_device", [c_char_p]),
-            ("hik_cr_trigger_device", [c_char_p]),
-        ]:
-            getattr(L, name).argtypes = argtypes
-            getattr(L, name).restype = c_int
-        L.hik_cr_register_bcr_callback_for_serial.argtypes = [c_char_p, BcrCallback, c_void_p]
-        L.hik_cr_register_bcr_callback_for_serial.restype = c_int
+        L.hik_cr_start_device.argtypes = [c_char_p, POINTER(HikCrOpenParams), c_int, BcrCallback, c_void_p]
+        L.hik_cr_start_device.restype = c_int
+        L.hik_cr_stop_device.argtypes = [c_char_p]
+        L.hik_cr_stop_device.restype = c_int
+        L.hik_cr_trigger_device.argtypes = [c_char_p]
+        L.hik_cr_trigger_device.restype = c_int
         L.hik_cr_last_error_copy.argtypes = [c_char_p, c_size_t]
         L.hik_cr_last_error_copy.restype = c_size_t
 
@@ -94,18 +99,50 @@ class HikCodeReader:
         finally:
             self._lib.hik_cr_free_device_list(arr)
 
-    def start_device(self, sn: str) -> None:
-        self.check(self._lib.hik_cr_start_device(sn.encode("utf-8")))
+    def start_device(
+        self,
+        sn: str,
+        *,
+        params: OpenParams | None = None,
+        on_bcr: BcrCallback | None = None,
+        clear_bcr: bool = False,
+        bcr_user_data: int = 0,
+    ) -> None:
+        if clear_bcr and on_bcr is not None:
+            raise ValueError("clear_bcr and on_bcr conflict")
+        if clear_bcr:
+            act, cb_arg = HIK_CR_BCR_CLEAR, cast(0, BcrCallback)
+        elif on_bcr is not None:
+            act, cb_arg = HIK_CR_BCR_SET, on_bcr
+            self._bcr_keepalive[sn] = on_bcr
+        else:
+            act, cb_arg = HIK_CR_BCR_KEEP, cast(0, BcrCallback)
+        raw = sn.encode("utf-8")
+        c_open = None
+        if params is not None:
+            keep: list[bytes] = []
+            c_open = HikCrOpenParams()
+            c_open.code128 = -1 if params.code128 is None else (1 if params.code128 else 0)
+            c_open.qrcode = -1 if params.qrcode is None else (1 if params.qrcode else 0)
+            if params.trigger_mode is not None:
+                b = params.trigger_mode.encode("utf-8")
+                keep.append(b)
+                c_open.trigger_mode = b
+            else:
+                c_open.trigger_mode = None
+            if params.trigger_source is not None:
+                b = params.trigger_source.encode("utf-8")
+                keep.append(b)
+                c_open.trigger_source = b
+            else:
+                c_open.trigger_source = None
+            _ = keep
+        self.check(
+            self._lib.hik_cr_start_device(raw, byref(c_open) if c_open else None, act, cb_arg, c_void_p(bcr_user_data))
+        )
 
     def stop_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))
-
-    def register_bcr_callback_for_serial(self, sn: str, cb: BcrCallback | None, user_data: int = 0) -> None:
-        self.check(
-            self._lib.hik_cr_register_bcr_callback_for_serial(
-                sn.encode("utf-8"), cb, c_void_p(user_data)
-            )
-        )
 
     def trigger_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))

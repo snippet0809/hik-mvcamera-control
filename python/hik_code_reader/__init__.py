@@ -20,6 +20,7 @@ from ctypes import (
     CFUNCTYPE,
     POINTER,
     Structure,
+    byref,
     c_char_p,
     c_int,
     c_size_t,
@@ -27,12 +28,17 @@ from ctypes import (
     cast,
 )
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 __all__ = [
     "BcrCallback",
     "HikCodeReader",
     "HikCrDeviceInfo",
+    "HikCrOpenParams",
+    "HIK_CR_BCR_CLEAR",
+    "HIK_CR_BCR_KEEP",
+    "HIK_CR_BCR_SET",
     "HIK_CR_ERR_INVALID_ARG",
     "HIK_CR_ERR_LOGIC",
     "HIK_CR_ERR_NO_MEMORY",
@@ -41,6 +47,7 @@ __all__ = [
     "HIK_CR_IPV4_STR_MAX",
     "HIK_CR_OK",
     "HIK_CR_SERIAL_MAX",
+    "OpenParams",
     "default_native_dll",
     "diagnose_runtime_search_context",
     "diagnose_windows_native_load",
@@ -56,7 +63,30 @@ HIK_CR_ERR_RUNTIME = 3
 HIK_CR_ERR_INVALID_ARG = 4
 HIK_CR_ERR_NO_MEMORY = 5
 
+HIK_CR_BCR_KEEP = 0
+HIK_CR_BCR_SET = 1
+HIK_CR_BCR_CLEAR = 2
+
 BcrCallback = CFUNCTYPE(None, c_char_p, POINTER(c_char_p), c_int, c_void_p)
+
+
+@dataclass
+class OpenParams:
+    """起流前 GenICam 项；未填字段走 C++ 默认。"""
+
+    trigger_mode: str | None = None
+    trigger_source: str | None = None
+    code128: bool | None = None
+    qrcode: bool | None = None
+
+
+class HikCrOpenParams(Structure):
+    _fields_ = [
+        ("trigger_mode", c_char_p),
+        ("trigger_source", c_char_p),
+        ("code128", c_int),
+        ("qrcode", c_int),
+    ]
 
 
 class HikCrDeviceInfo(Structure):
@@ -400,15 +430,14 @@ class HikCodeReader:
         L.hik_cr_enum_devices.restype = c_int
         L.hik_cr_free_device_list.argtypes = [POINTER(HikCrDeviceInfo)]
         L.hik_cr_free_device_list.restype = None
+        L.hik_cr_start_device.argtypes = [c_char_p, POINTER(HikCrOpenParams), c_int, BcrCallback, c_void_p]
+        L.hik_cr_start_device.restype = c_int
         for name, argtypes in [
-            ("hik_cr_start_device", [c_char_p]),
             ("hik_cr_stop_device", [c_char_p]),
             ("hik_cr_trigger_device", [c_char_p]),
         ]:
             getattr(L, name).argtypes = argtypes
             getattr(L, name).restype = c_int
-        L.hik_cr_register_bcr_callback_for_serial.argtypes = [c_char_p, BcrCallback, c_void_p]
-        L.hik_cr_register_bcr_callback_for_serial.restype = c_int
         L.hik_cr_last_error_copy.argtypes = [c_char_p, c_size_t]
         L.hik_cr_last_error_copy.restype = c_size_t
 
@@ -440,26 +469,62 @@ class HikCodeReader:
         finally:
             self._lib.hik_cr_free_device_list(arr)
 
-    def start_device(self, sn: str) -> None:
-        self.check(self._lib.hik_cr_start_device(sn.encode("utf-8")))
+    def start_device(
+        self,
+        sn: str,
+        *,
+        params: OpenParams | None = None,
+        on_bcr: Callable[..., None] | None = None,
+        clear_bcr: bool = False,
+        bcr_user_data: int = 0,
+    ) -> None:
+        if clear_bcr and on_bcr is not None:
+            raise ValueError("clear_bcr 与 on_bcr 不可同时指定")
+        if clear_bcr:
+            bcr_action = HIK_CR_BCR_CLEAR
+            cb_arg = cast(0, BcrCallback)
+        elif on_bcr is not None:
+            bcr_action = HIK_CR_BCR_SET
+            cb_arg = on_bcr if isinstance(on_bcr, BcrCallback) else BcrCallback(on_bcr)
+            self._bcr_keepalive[sn] = cb_arg
+        else:
+            bcr_action = HIK_CR_BCR_KEEP
+            cb_arg = cast(0, BcrCallback)
+
+        raw_sn = sn.encode("utf-8")
+        c_struct: HikCrOpenParams | None = None
+        if params is not None:
+            keep: list[bytes] = []
+            c_struct = HikCrOpenParams()
+            c_struct.code128 = -1 if params.code128 is None else (1 if params.code128 else 0)
+            c_struct.qrcode = -1 if params.qrcode is None else (1 if params.qrcode else 0)
+            if params.trigger_mode is not None:
+                b = params.trigger_mode.encode("utf-8")
+                keep.append(b)
+                c_struct.trigger_mode = b
+            else:
+                c_struct.trigger_mode = None
+            if params.trigger_source is not None:
+                b = params.trigger_source.encode("utf-8")
+                keep.append(b)
+                c_struct.trigger_source = b
+            else:
+                c_struct.trigger_source = None
+            # C 在 start 返回前已拷贝字符串；keep 仅保证调用期间有效
+            _ = keep
+
+        self.check(
+            self._lib.hik_cr_start_device(
+                raw_sn,
+                byref(c_struct) if c_struct is not None else None,
+                bcr_action,
+                cb_arg,
+                c_void_p(bcr_user_data),
+            )
+        )
 
     def stop_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))
-
-    def register_bcr_callback_for_serial(self, sn: str, cb: Callable[..., None] | None, user_data: int = 0) -> None:
-        # ctypes 不能把 Python None 当作 C 函数指针 NULL；需显式空指针以注销回调。
-        # 须长期持有 BcrCallback 对象，否则 C 层仍保存函数指针时 Python 侧可能 GC 掉包装，回调时崩溃。
-        if cb is None:
-            self._bcr_keepalive.pop(sn, None)
-            cb_arg = cast(0, BcrCallback)
-        else:
-            cb_arg = cb if isinstance(cb, BcrCallback) else BcrCallback(cb)
-            self._bcr_keepalive[sn] = cb_arg
-        self.check(
-            self._lib.hik_cr_register_bcr_callback_for_serial(
-                sn.encode("utf-8"), cb_arg, c_void_p(user_data)
-            )
-        )
 
     def trigger_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))

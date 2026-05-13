@@ -1,25 +1,14 @@
-// Package hikcr 通过 cgo 调用 hik_code_reader C API。
-// import 路径形如：github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr（与 ffi/go/go.mod 的 module 行一致）。
-//
-// 构建示例（按实际路径修改）：
-//
-//	# PowerShell（cgo 的 CC 请用 MinGW gcc，勿设 cl；见 https://go.dev/issue/20982）
-//	$env:CGO_CFLAGS="-I$PWD/include"
-//	$env:CGO_LDFLAGS="-L$PWD/build -lhik_code_reader"
-//	go build ./ffi/go/hikcr
+// Package hikcr：cgo 调用 hik_code_reader C API（与 C++ code_reader.h 对齐）。
 package hikcr
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../include
-
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"
 
-// Must match cgo-generated //export signature exactly (Go *C.char → char*, not const char* — otherwise gcc conflicts with _cgo_export.c).
 extern void hikcrGoBcrShim(char *serial_utf8, char **codes, int code_count, void *user_data);
 
-// Return //export shim as HikCrBcrCallback (Go cannot reference C.hikcrGoBcrShim; go#19837).
-HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
+static HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
 	return (HikCrBcrCallback)hikcrGoBcrShim;
 }
 */
@@ -29,6 +18,18 @@ import (
 	"fmt"
 	"unsafe"
 )
+
+const (
+	BcrKeep  = int(C.HIK_CR_BCR_KEEP)
+	BcrSet   = int(C.HIK_CR_BCR_SET)
+	BcrClear = int(C.HIK_CR_BCR_CLEAR)
+)
+
+// OpenParams 对应 HikCrOpenParams；字符串指针在 StartDevice 调用期间须保持有效（由本包拷贝到 C 栈上）。
+type OpenParams struct {
+	TriggerMode, TriggerSource *string
+	Code128, QRCode             *bool // nil → 使用默认 true
+}
 
 func lastError() string {
 	n := C.hik_cr_last_error_copy(nil, 0)
@@ -53,13 +54,11 @@ func check(r C.HikCrResult) error {
 	return fmt.Errorf("hik_cr %d: %s", int(r), lastError())
 }
 
-// DeviceInfo 对应 HikCrDeviceInfo。
 type DeviceInfo struct {
 	SerialNumber string
 	NetExportIP  string
 }
 
-// EnumDevices 枚举 GigE 读码器。
 func EnumDevices() ([]DeviceInfo, error) {
 	var arr *C.HikCrDeviceInfo
 	var n C.int
@@ -81,10 +80,61 @@ func EnumDevices() ([]DeviceInfo, error) {
 	return out, nil
 }
 
-func StartDevice(serial string) error {
+var bcrBySerial = map[string]func([]string){}
+
+// StartDevice 起流。open==nil 表示全默认；bcrAction 为 BcrKeep/BcrSet/BcrClear；仅在 BcrSet 时需提供 bcrFn。
+func StartDevice(serial string, open *OpenParams, bcrAction int, bcrFn func([]string)) error {
 	cs := C.CString(serial)
 	defer C.free(unsafe.Pointer(cs))
-	return check(C.hik_cr_start_device(cs))
+	var copen C.HikCrOpenParams
+	var copenPtr *C.HikCrOpenParams
+	var tm, ts *C.char
+	if open != nil {
+		copen.code128 = -1
+		copen.qrcode = -1
+		if open.TriggerMode != nil {
+			tm = C.CString(*open.TriggerMode)
+			defer C.free(unsafe.Pointer(tm))
+			copen.trigger_mode = tm
+		}
+		if open.TriggerSource != nil {
+			ts = C.CString(*open.TriggerSource)
+			defer C.free(unsafe.Pointer(ts))
+			copen.trigger_source = ts
+		}
+		if open.Code128 != nil {
+			v := C.int(0)
+			if *open.Code128 {
+				v = 1
+			}
+			copen.code128 = v
+		}
+		if open.QRCode != nil {
+			v := C.int(0)
+			if *open.QRCode {
+				v = 1
+			}
+			copen.qrcode = v
+		}
+		copenPtr = &copen
+	}
+	var cb C.HikCrBcrCallback
+	switch bcrAction {
+	case BcrSet:
+		if bcrFn == nil {
+			return fmt.Errorf("BcrSet requires bcrFn")
+		}
+		bcrBySerial[serial] = bcrFn
+		cb = C.hikcr_wrap_bcr_shim()
+	case BcrClear:
+		delete(bcrBySerial, serial)
+	}
+	return check(C.hik_cr_start_device(cs, copenPtr, C.int(bcrAction), cb, nil))
+}
+
+// StartDeviceSimple 全默认起流且不改动 BCR（等价 StartDevice(serial, nil, BcrKeep, nil)）。
+func StartDeviceSimple(serial string) error {
+	return StartDevice(serial, nil, BcrKeep, nil)
 }
 
 func StopDevice(serial string) error {
@@ -98,8 +148,6 @@ func TriggerDevice(serial string) error {
 	defer C.free(unsafe.Pointer(cs))
 	return check(C.hik_cr_trigger_device(cs))
 }
-
-var bcrBySerial = map[string]func([]string){}
 
 //export hikcrGoBcrShim
 func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointer) {
@@ -119,21 +167,4 @@ func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointe
 		out[i] = C.GoString(p)
 	}
 	fn(out)
-}
-
-// RegisterBcrCallbackForSerial 为指定序列号注册 BCR 回调（在 SDK 线程调用，勿长时间阻塞）。
-// 同一序列号再次注册会覆盖；传 nil 清除该序列号的回调。未注册序列号上的读码结果会被静默丢弃。
-func RegisterBcrCallbackForSerial(serial string, fn func([]string)) error {
-	if fn == nil {
-		delete(bcrBySerial, serial)
-	} else {
-		bcrBySerial[serial] = fn
-	}
-	cs := C.CString(serial)
-	defer C.free(unsafe.Pointer(cs))
-	var cb C.HikCrBcrCallback
-	if fn != nil {
-		cb = C.hikcr_wrap_bcr_shim()
-	}
-	return check(C.hik_cr_register_bcr_callback_for_serial(cs, cb, nil))
 }
