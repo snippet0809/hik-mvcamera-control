@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hik-code-reader"
-version = "0.0.4"
+version = "0.1.0"
 description = "ctypes bindings for Hikrobot code reader (MvCodeReader) C API — Windows x64 wheel ships native DLL"
 readme = "README.md"
 requires-python = ">=3.10"
