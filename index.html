@@ -422,7 +422,7 @@ print(cr.enum_devices())
 <ul>
 <li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（<code>.lib</code> + 运行时 <code>dll</code>）；<strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，与用 MSVC 编出的 <code>hik_code_reader.dll</code> 不矛盾。<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
 <li><strong>Windows 运行时 DLL</strong>：<code>hikcr</code> 在 cgo 加载前会按与上文 <strong>Python（Windows）</strong> 相同的规则调用 <code>AddDllDirectory</code>（<code>GENICAM_GENTL*</code>、<code>MVCAM_GENICAM_CLPROTOCOL</code>、<code>Path</code> 启发式，以及 <strong><code>HIK_CODE_READER_DLL</code></strong> 所在目录），便于解析 <code>MvCodeReaderCtrl.dll</code> 等依赖。  </li>
-<li><strong>BCR 回调</strong>：<code>RegisterBcrCallbackForSerial(序列号, func)</code> 按序列号绑定；未注册序列号上的读码结果静默丢弃。  </li>
+<li><strong>对外 ABI（业务四件）</strong>：<code>hik_cr_enum_devices</code> / <code>hik_cr_start_device</code>（含 <code>HikCrOpenParams</code> 与 <code>HIK_CR_BCR_*</code> 登记或清除 BCR）/ <code>hik_cr_stop_device</code> / <code>hik_cr_trigger_device</code>；另有 <code>hik_cr_free_device_list</code>、<code>hik_cr_last_error_copy</code>。  </li>
 <li><strong>私有仓库</strong>：<br />
 <code>go env -w GOPRIVATE=github.com/snippet0809/*</code><br />
   必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
