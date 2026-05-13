@@ -50,7 +50,6 @@ set(HIK_CODE_READER_SOURCES
     src/code_reader/c_api.cpp
     src/code_reader/device_control.cpp
     src/code_reader/device_info.cpp
-    src/code_reader/device_set_param.cpp
     src/code_reader/device_trigger.cpp
 )
 

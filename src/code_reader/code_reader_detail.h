@@ -31,29 +31,18 @@ public:
     /** Connected → Open；已为 Open 则返回；Grabbing 下抛 std::logic_error（须先停流）。 */
     void open();
     /** Connected/Open → Grabbing；必要时内部 OpenDevice 并注册图像回调。 */
-    void startGrabbing();
+    void grabbing();
     /** Grabbing → Open → Connected（停流并 CloseDevice）。 */
     void close();
 };
 
 CodeReader *getDevice(const std::string &sn, bool createIfNotExist);
 
-struct CodeReaderOpenParams;
-void applyCodeReaderOpenParams(CodeReader *device, const CodeReaderOpenParams &params);
-
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 
 /** 按序列号登记 BCR 回调并在取流中刷新 SDK 绑定；仅供实现文件与 C API 调用。 */
 void registerImageCallbackForSerial(const std::string &sn,
                                     const std::function<void(std::vector<std::string>)> &callback);
-
-/** GenICam 写参：仅供本库其它 .cpp 调用，非 `code_reader.h` 公开 API。 */
-void setIntValue(const std::string &sn, const std::string &key, int value);
-void setStringValue(const std::string &sn, const std::string &key, const std::string &value);
-void setBoolValue(const std::string &sn, const std::string &key, bool value);
-void setFloatValue(const std::string &sn, const std::string &key, float value);
-void setEnumValue(const std::string &sn, const std::string &key, unsigned int value);
-void setEnumValueByString(const std::string &sn, const std::string &key, const std::string &symbolic);
 
 inline std::string toHexStr(int value) {
     std::stringstream ss;

@@ -34,7 +34,7 @@ using CodeReaderBcrCallback = std::function<void(std::vector<std::string>)>;
 std::vector<CodeReaderInfo> enumDevice();
 
 /**
- * 按序列号开始取流（Open 阶段写入 @p params、可选登记 BCR 回调、StartGrabbing）。
+ * 按序列号开始取流（Open 阶段写入 @p params、可选登记 BCR 回调，再进入取流）。
  * 已在取流时忽略 @p params，仅处理 @p onBcrCodes（刷新或注销回调）。
  */
 void startDevice(const std::string &sn, const CodeReaderOpenParams &params = {},
