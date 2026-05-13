@@ -1,11 +1,9 @@
-/**
- * @file device_info.cpp
- * @brief 设备枚举与按序列号缓存的 `CodeReader`（SDK 句柄）；状态迁移见 device_control.cpp。
- */
+/** 枚举、按序列号缓存 CodeReader；状态机见 device_control.cpp */
 
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
 #include "code_reader_detail.h"
+#include <cstring>
 #include <memory>
 #include <unordered_map>
 
@@ -13,33 +11,28 @@ std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
 namespace {
 
-    std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
-        std::size_t n = 0;
-        while (n < len && buf[n] != '\0') {
-            ++n;
-        }
-        return std::string(reinterpret_cast<const char *>(buf), n);
-    }
+std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
+    const char *p = reinterpret_cast<const char *>(buf);
+    return std::string(p, strnlen(p, len));
+}
 
 } // namespace
 
 CodeReader::CodeReader(const std::string &serialNumber)
     : serialNumber(serialNumber), handle(nullptr), status(CodeReaderStatus::Connected) {
-    int ok = MV_CODEREADER_CreateHandleBySerialNumber(&this->handle, this->serialNumber.c_str());
+    const int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str());
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
     }
 }
 
-// 析构时须先尽量停流并 CloseDevice，再 DestroyHandle；否则部分固件上会出现下次 MV_CODEREADER_OpenDevice 报 0x80020000。
 CodeReader::~CodeReader() {
-    if (handle == nullptr) {
+    if (!handle) {
         return;
     }
     try {
         close();
     } catch (...) {
-        // 析构阶段不再向外抛异常；尽力释放后再销毁句柄
     }
     MV_CODEREADER_DestroyHandle(handle);
     handle = nullptr;
@@ -47,34 +40,32 @@ CodeReader::~CodeReader() {
 
 std::vector<CodeReaderInfo> enumDevice() {
     MV_CODEREADER_DEVICE_INFO_LIST stDevList{};
-    int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
+    const int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_EnumCodeReader error: " + toHexStr(ok));
     }
     std::vector<CodeReaderInfo> infos;
-    for (unsigned int i = 0; i < stDevList.nDeviceNum; i++) {
+    for (unsigned i = 0; i < stDevList.nDeviceNum; ++i) {
         MV_CODEREADER_DEVICE_INFO *pinfo = stDevList.pDeviceInfo[i];
-        if (pinfo == nullptr) {
+        if (!pinfo || pinfo->nTLayerType != MV_CODEREADER_GIGE_DEVICE) {
             continue;
         }
-        if (pinfo->nTLayerType != MV_CODEREADER_GIGE_DEVICE) {
-            continue;
-        }
-        const MV_CODEREADER_GIGE_DEVICE_INFO &gige = pinfo->SpecialInfo.stGigEInfo;
-        std::string sn = gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber));
-        std::string netExportIp = intToIp(gige.nNetExport);
-        infos.push_back({sn, netExportIp});
+        const auto &gige = pinfo->SpecialInfo.stGigEInfo;
+        infos.push_back({gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber)),
+                         intToIp(gige.nNetExport)});
     }
     return infos;
 }
 
-CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
+CodeReader *findDevice(const std::string &sn) {
+    const auto it = deviceMap.find(sn);
+    return it == deviceMap.end() ? nullptr : it->second.get();
+}
+
+CodeReader *getOrCreateDevice(const std::string &sn) {
     const auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
         return it->second.get();
-    }
-    if (!createIfNotExist) {
-        return nullptr;
     }
     return deviceMap.emplace(sn, std::make_shared<CodeReader>(sn)).first->second.get();
 }

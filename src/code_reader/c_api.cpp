@@ -1,10 +1,6 @@
-/**
- * @file c_api.cpp
- * @brief C ABI 实现：捕获 C++ 异常并映射为 HikCrResult，供 Python / Go 等 FFI。
- */
+/** C ABI：异常 → HikCrResult；线程局部错误串 */
 
 #include "hik_code_reader/c_api.h"
-
 #include "code_reader.h"
 #include "code_reader_detail.h"
 
@@ -12,69 +8,65 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace {
 
-    thread_local std::string g_lastError;
+thread_local std::string g_err;
 
-    void setLastError(std::string msg) {
-        g_lastError = std::move(msg);
-    }
+void err(std::string s) {
+    g_err = std::move(s);
+}
 
-    bool requireNonNull(const char *p, const char *what) {
-        if (p != nullptr) {
-            return true;
-        }
-        setLastError(std::string("null pointer: ") + what);
-        return false;
-    }
-
-    bool copyField(char *dest, size_t destCap, const std::string &src) {
-        if (destCap == 0) {
-            return false;
-        }
-        if (src.size() >= destCap) {
-            setLastError("device field exceeds HIK_CR_*_MAX");
-            return false;
-        }
-        std::memcpy(dest, src.c_str(), src.size() + 1);
+bool nonNull(const char *p, const char *name) {
+    if (p) {
         return true;
     }
+    err(std::string("null: ") + name);
+    return false;
+}
 
-    template <typename F>
-    HikCrResult wrap(F &&f) {
-        try {
-            std::forward<F>(f)();
-            return HIK_CR_OK;
-        } catch (const std::invalid_argument &e) {
-            setLastError(e.what());
-            return HIK_CR_ERR_INVALID_ARG;
-        } catch (const std::logic_error &e) {
-            setLastError(e.what());
-            return HIK_CR_ERR_LOGIC;
-        } catch (const std::runtime_error &e) {
-            setLastError(e.what());
-            return HIK_CR_ERR_RUNTIME;
-        } catch (const std::bad_alloc &) {
-            setLastError("bad_alloc");
-            return HIK_CR_ERR_NO_MEMORY;
-        } catch (const std::exception &e) {
-            setLastError(e.what());
-            return HIK_CR_ERR_UNKNOWN;
-        } catch (...) {
-            setLastError("unknown non-std exception");
-            return HIK_CR_ERR_UNKNOWN;
-        }
+bool copyTo(char *dst, size_t cap, const std::string &src) {
+    if (!cap || src.size() >= cap) {
+        err(cap ? "field too long" : "zero cap");
+        return false;
     }
+    std::memcpy(dst, src.c_str(), src.size() + 1);
+    return true;
+}
+
+template <typename F>
+HikCrResult wrap(F &&f) {
+    try {
+        std::forward<F>(f)();
+        return HIK_CR_OK;
+    } catch (const std::invalid_argument &e) {
+        err(e.what());
+        return HIK_CR_ERR_INVALID_ARG;
+    } catch (const std::logic_error &e) {
+        err(e.what());
+        return HIK_CR_ERR_LOGIC;
+    } catch (const std::runtime_error &e) {
+        err(e.what());
+        return HIK_CR_ERR_RUNTIME;
+    } catch (const std::bad_alloc &) {
+        err("bad_alloc");
+        return HIK_CR_ERR_NO_MEMORY;
+    } catch (const std::exception &e) {
+        err(e.what());
+        return HIK_CR_ERR_UNKNOWN;
+    } catch (...) {
+        err("non-std exception");
+        return HIK_CR_ERR_UNKNOWN;
+    }
+}
 
 } // namespace
 
 extern "C" {
 
 HIK_CR_API HikCrResult hik_cr_enum_devices(HikCrDeviceInfo **out_list, int *out_count) {
-    if (out_list == nullptr || out_count == nullptr) {
+    if (!out_list || !out_count) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     *out_list = nullptr;
@@ -86,10 +78,10 @@ HIK_CR_API HikCrResult hik_cr_enum_devices(HikCrDeviceInfo **out_list, int *out_
         }
         auto *arr = new HikCrDeviceInfo[devs.size()];
         for (size_t i = 0; i < devs.size(); ++i) {
-            if (!copyField(arr[i].serial_number, sizeof(arr[i].serial_number), devs[i].serialNumber) ||
-                !copyField(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp)) {
+            if (!copyTo(arr[i].serial_number, sizeof(arr[i].serial_number), devs[i].serialNumber) ||
+                !copyTo(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp)) {
                 delete[] arr;
-                throw std::runtime_error("hik_cr_enum_devices: field copy failed");
+                throw std::runtime_error("hik_cr_enum_devices copy");
             }
         }
         *out_list = arr;
@@ -102,14 +94,14 @@ HIK_CR_API void hik_cr_free_device_list(HikCrDeviceInfo *list) {
 }
 
 HIK_CR_API HikCrResult hik_cr_start_device(const char *serial_utf8) {
-    if (!requireNonNull(serial_utf8, "serial_utf8")) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { startDevice(serial_utf8); });
 }
 
 HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
-    if (!requireNonNull(serial_utf8, "serial_utf8")) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { stopDevice(serial_utf8); });
@@ -117,12 +109,12 @@ HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
 
 HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *serial_utf8, HikCrBcrCallback cb,
                                                                void *user_data) {
-    if (!requireNonNull(serial_utf8, "serial_utf8")) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] {
         const std::string sn(serial_utf8);
-        if (cb == nullptr) {
+        if (!cb) {
             registerImageCallbackForSerial(sn, {});
             return;
         }
@@ -138,20 +130,19 @@ HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *seria
 }
 
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {
-    if (!requireNonNull(serial_utf8, "serial_utf8")) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { triggerDevice(serial_utf8); });
 }
 
 HIK_CR_API size_t hik_cr_last_error_copy(char *out_utf8, size_t buf_size) {
-    const std::string &e = g_lastError;
-    const size_t need = e.size() + 1;
-    if (out_utf8 == nullptr || buf_size == 0) {
+    const size_t need = g_err.size() + 1;
+    if (!out_utf8 || !buf_size) {
         return need;
     }
-    const size_t n = std::min(e.size(), buf_size - 1);
-    std::memcpy(out_utf8, e.data(), n);
+    const size_t n = std::min(g_err.size(), buf_size - 1);
+    std::memcpy(out_utf8, g_err.data(), n);
     out_utf8[n] = '\0';
     return n;
 }
