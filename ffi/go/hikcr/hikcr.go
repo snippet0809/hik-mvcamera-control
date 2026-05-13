@@ -27,7 +27,6 @@ import "C"
 
 import (
 	"fmt"
-	"sync"
 	"unsafe"
 )
 
@@ -118,17 +117,12 @@ func TriggerDevice(serial string) error {
 	return check(C.hik_cr_trigger_device(cs))
 }
 
-var (
-	bcrMu       sync.Mutex
-	bcrBySerial = map[string]func([]string){}
-)
+var bcrBySerial = map[string]func([]string){}
 
 //export hikcrGoBcrShim
 func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointer) {
 	sn := C.GoString(serial)
-	bcrMu.Lock()
 	fn := bcrBySerial[sn]
-	bcrMu.Unlock()
 	if fn == nil {
 		return
 	}
@@ -148,13 +142,11 @@ func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointe
 // RegisterBcrCallbackForSerial 为指定序列号注册 BCR 回调（在 SDK 线程调用，勿长时间阻塞）。
 // 同一序列号再次注册会覆盖；传 nil 清除该序列号的回调。未注册序列号上的读码结果会被静默丢弃。
 func RegisterBcrCallbackForSerial(serial string, fn func([]string)) error {
-	bcrMu.Lock()
 	if fn == nil {
 		delete(bcrBySerial, serial)
 	} else {
 		bcrBySerial[serial] = fn
 	}
-	bcrMu.Unlock()
 	cs := C.CString(serial)
 	defer C.free(unsafe.Pointer(cs))
 	var cb C.HikCrBcrCallback

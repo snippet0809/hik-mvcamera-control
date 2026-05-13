@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>

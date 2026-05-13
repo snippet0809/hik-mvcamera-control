@@ -6,11 +6,11 @@
 #include "MvCodeReaderCtrl.h"
 #include "code_reader.h"
 #include "code_reader_detail.h"
+#include <algorithm>
 #include <cstring>
-#include <mutex>
+#include <functional>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -19,8 +19,20 @@ namespace {
     /** 软触发命令节点名（GenICam 常见命名，具体以设备 XML 为准）。 */
     constexpr const char *kTriggerSoftware = "TriggerSoftware";
 
-    std::mutex g_serialBcrMutex;
-    std::unordered_map<std::string, std::function<void(std::vector<std::string>)>> g_callbacksBySerial;
+    using BcrCodes = std::vector<std::string>;
+    using BcrUserCb = std::function<void(BcrCodes)>;
+
+    /** 序列号与回调分两列存，避免部分 Clang 对 ``pair<string, function<...>>`` 的 constexpr 诊断。 */
+    std::vector<std::string> g_callbackSerials;
+    std::vector<BcrUserCb> g_callbackFuncs;
+
+    int findSerialIndex(const std::string &sn) {
+        const auto it = std::find(g_callbackSerials.begin(), g_callbackSerials.end(), sn);
+        if (it == g_callbackSerials.end()) {
+            return -1;
+        }
+        return static_cast<int>(it - g_callbackSerials.begin());
+    }
 
     /**
      * 从 MV_CODEREADER_IMAGE_OUT_INFO 中解析 BCR 结果，得到条码字符串列表。
@@ -71,15 +83,11 @@ namespace {
         }
         auto *device = static_cast<CodeReader *>(pUser);
         std::vector<std::string> codes = extractBcrStrings(*pstFrameInfo);
-        std::function<void(std::vector<std::string>)> userCb;
-        {
-            std::lock_guard<std::mutex> lock(g_serialBcrMutex);
-            const auto it = g_callbacksBySerial.find(device->serialNumber);
-            if (it == g_callbacksBySerial.end() || !it->second) {
-                return;
-            }
-            userCb = it->second;
+        const int idx = findSerialIndex(device->serialNumber);
+        if (idx < 0 || !g_callbackFuncs[static_cast<std::size_t>(idx)]) {
+            return;
         }
+        BcrUserCb userCb = g_callbackFuncs[static_cast<std::size_t>(idx)];
         userCb(std::move(codes));
     }
 
@@ -87,13 +95,18 @@ namespace {
 
 void registerImageCallbackForSerial(const std::string &sn,
                                     const std::function<void(std::vector<std::string>)> &callback) {
-    {
-        std::lock_guard<std::mutex> lock(g_serialBcrMutex);
-        if (callback) {
-            g_callbacksBySerial[sn] = callback;
+    const int idx = findSerialIndex(sn);
+    if (callback) {
+        if (idx >= 0) {
+            g_callbackFuncs[static_cast<std::size_t>(idx)] = callback;
         } else {
-            g_callbacksBySerial.erase(sn);
+            g_callbackSerials.push_back(sn);
+            g_callbackFuncs.push_back(callback);
         }
+    } else if (idx >= 0) {
+        const auto i = static_cast<std::size_t>(idx);
+        g_callbackSerials.erase(g_callbackSerials.begin() + static_cast<std::ptrdiff_t>(i));
+        g_callbackFuncs.erase(g_callbackFuncs.begin() + static_cast<std::ptrdiff_t>(i));
     }
     CodeReader *d = getDevice(sn, false);
     if (d != nullptr && d->status == CodeReaderStatus::Grabbing) {
@@ -109,13 +122,10 @@ void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     if (device == nullptr || device->handle == nullptr) {
         return;
     }
-    std::function<void(std::vector<std::string>)> userCb;
-    {
-        std::lock_guard<std::mutex> lock(g_serialBcrMutex);
-        const auto it = g_callbacksBySerial.find(device->serialNumber);
-        if (it != g_callbacksBySerial.end()) {
-            userCb = it->second;
-        }
+    BcrUserCb userCb;
+    const int idx = findSerialIndex(device->serialNumber);
+    if (idx >= 0) {
+        userCb = g_callbackFuncs[static_cast<std::size_t>(idx)];
     }
     void(__stdcall * thunk)(unsigned char *, MV_CODEREADER_IMAGE_OUT_INFO *, void *) =
         userCb ? sdkImageCallbackBridge : nullptr;
