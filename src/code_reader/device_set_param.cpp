@@ -1,10 +1,9 @@
 /**
  * @file device_set_param.cpp
- * @brief GigE 改 IP（setIp）与 GenICam 节点写参（setIntValue 等）；均要求设备处于 Open（未取流）。
+ * @brief GenICam 节点写参（setIntValue 等）；要求非取流；Connected 时会先 OpenDevice。
  */
 
 #include "MvCodeReaderCtrl.h"
-#include "code_reader.h"
 #include "code_reader_detail.h"
 #include <stdexcept>
 
@@ -18,21 +17,16 @@ namespace {
 
     /**
      * 参数设置要求设备处于 Open（已 OpenDevice、未取流）。
-     * 未缓存 / Connected / Grabbing 均抛 std::logic_error，提示调用方先 openDeviceForParameters 或 stopDevice。
+     * Grabbing 时抛 std::logic_error；Connected 时在本函数内调用 open()；无句柄时创建实例（需已掌握合法序列号）。
      */
     CodeReader *requireOpenForParameter(const std::string &sn, const char *caller) {
-        CodeReader *d = getDevice(sn, false);
-        if (d == nullptr) {
-            throw std::logic_error(std::string(caller) +
-                                   "：设备未在会话中，请先调用 openDeviceForParameters（需已枚举到该序列号）");
-        }
+        CodeReader *d = getDevice(sn, true);
         if (d->status == CodeReaderStatus::Grabbing) {
             throw std::logic_error(std::string(caller) +
-                                   "：当前为取流状态，无法设置参数；请先 stopDevice，再调用 openDeviceForParameters");
+                                   "：当前为取流状态，无法设置参数；请先 stopDevice");
         }
         if (d->status == CodeReaderStatus::Connected) {
-            throw std::logic_error(
-                std::string(caller) + "：设备尚未打开；请先调用 openDeviceForParameters 进入 Open 状态后再试");
+            d->open();
         }
         return d;
     }
@@ -45,30 +39,6 @@ namespace {
     }
 
 } // namespace
-
-/**
- * 通过 GigE 强制写入设备 IP / 掩码 / 网关。
- *
- * 请注意：
- * 1. 须先 openDeviceForParameters 使设备处于 Open（未取流）；取流中调用将抛异常。
- * 2. 设置成功后设备通常会重启，故成功后 destroyDevice 释放本地句柄。
- *
- * @throws std::invalid_argument IP/掩码/网关格式非法
- * @throws std::logic_error 设备未缓存、仍为 Connected 或正在 Grabbing 等非 Open 状态
- * @throws std::runtime_error MV_CODEREADER_GIGE_ForceIp 失败时抛出
- */
-void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway) {
-    unsigned int ipHost = 0;
-    unsigned int maskHost = 0;
-    unsigned int gwHost = 0;
-    if (!tryParseIpv4HostOrder(ip, ipHost) || !tryParseIpv4HostOrder(mask, maskHost) ||
-        !tryParseIpv4HostOrder(gateway, gwHost)) {
-        throw std::invalid_argument("setIp: invalid IPv4 address, mask, or gateway");
-    }
-    CodeReader *device = requireOpenForParameter(sn, "setIp");
-    checkSdkOk(MV_CODEREADER_GIGE_ForceIp(device->handle, ipHost, maskHost, gwHost), "MV_CODEREADER_GIGE_ForceIp");
-    destroyDevice(sn);
-}
 
 void setIntValue(const std::string &sn, const std::string &key, int value) {
     setParamOpened(sn, "MV_CODEREADER_SetIntValue", [&](void *h) {

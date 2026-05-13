@@ -39,11 +39,10 @@ flowchart TB
 ## 功能概览（读码器 C++ 封装）
 
 - **枚举设备**：`enumDevice()`，返回序列号与 GigE 导出 IP 等信息（见 `src/code_reader/device_info.cpp`）。
-- **运行控制**：`startDevice` / `stopDevice`（内部完成打开设备、注册图像回调、起停取流等；按序列号操作）。
-- **读码回调**：`registerImageCallbackForSerial`（按序列号注册 BCR 结果列表；未注册则静默丢弃）；**软触发**：`triggerDevice`（仅当设备处于取流 Grabbing）。
-- **改参前置**：`openDeviceForParameters` 将设备置为 **Open**（已 OpenDevice、未取流）。正在取流时须先 `stopDevice`，否则会抛 `std::logic_error`。
-- **GigE 网络**：`setIp` 改 IP/掩码/网关（与 GenICam 写参不同类；成功后常 `destroyDevice` 释放本地缓存）。
-- **GenICam 写参**：`setIntValue` / `setFloatValue` / `setBoolValue` / `setStringValue` / `setEnumValue` / `setEnumValueByString`（均须先处于 Open，约定同 `openDeviceForParameters`）。
+- **运行控制**：`startDevice` / `stopDevice`（内部完成打开设备、可选 `CodeReaderOpenParams`、BCR 回调与起停流等；按序列号操作）。
+- **读码回调**：通过 `startDevice` 第三参传入；`std::nullopt` 保留已有登记，空 `std::function` 可取消该序列号回调。**软触发**：`triggerDevice`（仅当设备处于取流 Grabbing）。
+- **改参 / GenICam**：常用项通过 `startDevice` 第二参 `CodeReaderOpenParams` 在起流前写入（当前含触发模式/触发源等）；其它节点不再经本库对外暴露。
+- **GigE 枚举**：`enumDevice` / `hik_cr_enum_devices` 仍返回当前 **导出 IP**（`netExportIp`）等摘要，便于展示与日志；本库不再提供改 IP 的封装。
 - **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`ffi/go`**。
 
 ## 在 GitHub 上托管分发（维护者）
@@ -218,7 +217,7 @@ cmake --build build
 ## 运行与部署说明
 
 1. 在目标机器安装海康读码器/视觉设备所需 **驱动与运行库**（版本需与 SDK 匹配）。
-2. GigE 设备注意网卡、防火墙与网段；改 IP 前须 `openDeviceForParameters` 使设备处于 **Open**，并阅读 `setIp` 注释（改 IP 后设备常重启，本地句柄会被移除）。
+2. GigE 设备注意网卡、防火墙与网段；改 IP 请使用海康官方工具/SDK，本仓库封装不再提供 `setIp`。
 3. 将 SDK 提供的 **DLL**（若静态链仍依赖运行时）放在可执行文件同目录或系统 `PATH` 中，按官方文档为准。
 
 ### 读码器 SDK 使用要点（与 `.docs` 开发指南 CHM 一致）

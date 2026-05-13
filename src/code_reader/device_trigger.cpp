@@ -20,7 +20,7 @@ namespace {
     constexpr const char *kTriggerSoftware = "TriggerSoftware";
 
     using BcrCodes = std::vector<std::string>;
-    using BcrUserCb = std::function<void(BcrCodes)>;
+    using BcrUserCb = CodeReaderBcrCallback;
 
     /** 序列号与回调分两列存，避免部分 Clang 对 ``pair<string, function<...>>`` 的 constexpr 诊断。 */
     std::vector<std::string> g_callbackSerials;
@@ -93,8 +93,7 @@ namespace {
 
 } // namespace
 
-void registerImageCallbackForSerial(const std::string &sn,
-                                    const std::function<void(std::vector<std::string>)> &callback) {
+void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCallback &callback) {
     const int idx = findSerialIndex(sn);
     if (callback) {
         if (idx >= 0) {

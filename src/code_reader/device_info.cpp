@@ -99,7 +99,7 @@ CodeReader *getDevice(const std::string &sn, bool createIfNotExist) {
     return nullptr;
 }
 
-/** 从缓存移除该序列号实例（如 setIp 成功后设备重启，本地句柄失效）。 */
+/** 从缓存移除该序列号实例（如上层决定丢弃会话）。 */
 void destroyDevice(const std::string &sn) {
     deviceMap.erase(sn);
 }

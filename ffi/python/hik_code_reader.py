@@ -14,10 +14,7 @@ from ctypes import (
     Structure,
     c_char_p,
     c_int,
-    c_int32,
     c_size_t,
-    c_uint32,
-    c_float,
     c_void_p,
 )
 
@@ -60,27 +57,12 @@ class HikCodeReader:
         for name, argtypes in [
             ("hik_cr_start_device", [c_char_p]),
             ("hik_cr_stop_device", [c_char_p]),
-            ("hik_cr_open_device_for_parameters", [c_char_p]),
             ("hik_cr_trigger_device", [c_char_p]),
         ]:
             getattr(L, name).argtypes = argtypes
             getattr(L, name).restype = c_int
-        L.hik_cr_set_ip.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
-        L.hik_cr_set_ip.restype = c_int
         L.hik_cr_register_bcr_callback_for_serial.argtypes = [c_char_p, BcrCallback, c_void_p]
         L.hik_cr_register_bcr_callback_for_serial.restype = c_int
-        L.hik_cr_set_int_value.argtypes = [c_char_p, c_char_p, c_int32]
-        L.hik_cr_set_int_value.restype = c_int
-        L.hik_cr_set_string_value.argtypes = [c_char_p, c_char_p, c_char_p]
-        L.hik_cr_set_string_value.restype = c_int
-        L.hik_cr_set_bool_value.argtypes = [c_char_p, c_char_p, c_int32]
-        L.hik_cr_set_bool_value.restype = c_int
-        L.hik_cr_set_float_value.argtypes = [c_char_p, c_char_p, c_float]
-        L.hik_cr_set_float_value.restype = c_int
-        L.hik_cr_set_enum_value.argtypes = [c_char_p, c_char_p, c_uint32]
-        L.hik_cr_set_enum_value.restype = c_int
-        L.hik_cr_set_enum_value_by_string.argtypes = [c_char_p, c_char_p, c_char_p]
-        L.hik_cr_set_enum_value_by_string.restype = c_int
         L.hik_cr_last_error_copy.argtypes = [c_char_p, c_size_t]
         L.hik_cr_last_error_copy.restype = c_size_t
 
@@ -118,19 +100,6 @@ class HikCodeReader:
     def stop_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))
 
-    def open_device_for_parameters(self, sn: str) -> None:
-        self.check(self._lib.hik_cr_open_device_for_parameters(sn.encode("utf-8")))
-
-    def set_ip(self, sn: str, ip: str, mask: str, gateway: str) -> None:
-        self.check(
-            self._lib.hik_cr_set_ip(
-                sn.encode("utf-8"),
-                ip.encode("utf-8"),
-                mask.encode("utf-8"),
-                gateway.encode("utf-8"),
-            )
-        )
-
     def register_bcr_callback_for_serial(self, sn: str, cb: BcrCallback | None, user_data: int = 0) -> None:
         self.check(
             self._lib.hik_cr_register_bcr_callback_for_serial(
@@ -140,33 +109,3 @@ class HikCodeReader:
 
     def trigger_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))
-
-    def set_int_value(self, sn: str, key: str, value: int) -> None:
-        self.check(self._lib.hik_cr_set_int_value(sn.encode("utf-8"), key.encode("utf-8"), c_int32(value)))
-
-    def set_string_value(self, sn: str, key: str, value: str) -> None:
-        self.check(
-            self._lib.hik_cr_set_string_value(
-                sn.encode("utf-8"), key.encode("utf-8"), value.encode("utf-8")
-            )
-        )
-
-    def set_bool_value(self, sn: str, key: str, value: bool) -> None:
-        self.check(
-            self._lib.hik_cr_set_bool_value(sn.encode("utf-8"), key.encode("utf-8"), c_int32(1 if value else 0))
-        )
-
-    def set_float_value(self, sn: str, key: str, value: float) -> None:
-        self.check(self._lib.hik_cr_set_float_value(sn.encode("utf-8"), key.encode("utf-8"), c_float(value)))
-
-    def set_enum_value(self, sn: str, key: str, value: int) -> None:
-        self.check(
-            self._lib.hik_cr_set_enum_value(sn.encode("utf-8"), key.encode("utf-8"), c_uint32(value))
-        )
-
-    def set_enum_value_by_string(self, sn: str, key: str, symbolic: str) -> None:
-        self.check(
-            self._lib.hik_cr_set_enum_value_by_string(
-                sn.encode("utf-8"), key.encode("utf-8"), symbolic.encode("utf-8")
-            )
-        )

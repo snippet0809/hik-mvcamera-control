@@ -42,7 +42,7 @@ typedef enum HikCrResult {
     HIK_CR_ERR_UNKNOWN = 1,
     HIK_CR_ERR_LOGIC = 2,       /**< 状态/前置条件不符（如未取流却 trigger） */
     HIK_CR_ERR_RUNTIME = 3,     /**< SDK 或其它运行时错误 */
-    HIK_CR_ERR_INVALID_ARG = 4, /**< 非法参数（如 NULL、IP 格式错误） */
+    HIK_CR_ERR_INVALID_ARG = 4, /**< 非法参数（如 NULL、非法字符串） */
     HIK_CR_ERR_NO_MEMORY = 5,
 } HikCrResult;
 
@@ -69,10 +69,6 @@ HIK_CR_API void hik_cr_free_device_list(HikCrDeviceInfo *list);
 
 HIK_CR_API HikCrResult hik_cr_start_device(const char *serial_utf8);
 HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8);
-HIK_CR_API HikCrResult hik_cr_open_device_for_parameters(const char *serial_utf8);
-
-HIK_CR_API HikCrResult hik_cr_set_ip(const char *serial_utf8, const char *ip, const char *mask,
-                                     const char *gateway);
 
 /**
  * 为指定序列号注册/更新/移除 BCR 回调。同一序列号再次注册时新回调覆盖旧回调；cb==NULL 表示移除该序列号的回调。
@@ -82,14 +78,6 @@ HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *seria
                                                                void *user_data);
 
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8);
-
-HIK_CR_API HikCrResult hik_cr_set_int_value(const char *serial_utf8, const char *key, int32_t value);
-HIK_CR_API HikCrResult hik_cr_set_string_value(const char *serial_utf8, const char *key, const char *value);
-HIK_CR_API HikCrResult hik_cr_set_bool_value(const char *serial_utf8, const char *key, int32_t non_zero);
-HIK_CR_API HikCrResult hik_cr_set_float_value(const char *serial_utf8, const char *key, float value);
-HIK_CR_API HikCrResult hik_cr_set_enum_value(const char *serial_utf8, const char *key, uint32_t value);
-HIK_CR_API HikCrResult hik_cr_set_enum_value_by_string(const char *serial_utf8, const char *key,
-                                                       const char *symbolic);
 
 /**
  * 拷贝本线程最近一次失败的人类可读信息（UTF-8），不含结尾则截断。

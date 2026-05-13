@@ -4,7 +4,7 @@
 环境变量:
 
 - ``HIK_CR_SELFTEST_RELAXED=1``：若 native ``CDLL`` 全部失败仍退出 0（供无 Runtime 的 CI 打日志）。
-- ``HIK_CR_SELFTEST_LIVE=1``：在枚举到设备时做短会话（Open 参数 → 软触发配置 → 取流 → 触发 2 次 → 停流）。
+- ``HIK_CR_SELFTEST_LIVE=1``：在枚举到设备时做短会话（``start_device`` → 软触发若干次 → ``stop_device``；是否成功依赖设备当前触发模式等配置）。
 """
 
 from __future__ import annotations
@@ -61,9 +61,6 @@ def main() -> int:
         sn = devs[0][0]
         print("[live] start/stop smoke on", repr(sn))
         try:
-            cr.open_device_for_parameters(sn)
-            cr.set_enum_value_by_string(sn, "TriggerMode", "On")
-            cr.set_enum_value_by_string(sn, "TriggerSource", "Software")
             cr.start_device(sn)
             for i in range(2):
                 cr.trigger_device(sn)

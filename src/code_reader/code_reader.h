@@ -2,12 +2,12 @@
 
 /**
  * @file code_reader.h
- * @brief 海康读码器简易 C++ 封装：按序列号枚举设备、启动/停止取流、注册读码回调、网络与 GenICam 写参、软触发等。
- * @note 典型取流路径由 startDevice/stopDevice 在内部完成打开与起停流。修改 IP 或 GenICam 参数须先调用
- * openDeviceForParameters 使设备处于 Open（未取流），状态不符时抛 std::logic_error，由调用方维护流程。
+ * @brief 海康读码器简易 C++ 封装：按序列号枚举设备、启动/停止取流、注册读码回调、软触发等。
+ * @note 典型取流路径由 startDevice/stopDevice 在内部完成打开与起停流。常用 GenICam 项可通过 `startDevice` 的 `CodeReaderOpenParams` 在起流前写入。
  */
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,44 +17,33 @@ struct CodeReaderInfo {
     std::string netExportIp;
 };
 
+/**
+ * 设备处于「已 OpenDevice、未取流」（Open）时可写入的可选参数集合；亦作为 `startDevice` 第二参数，在起流前写入已设字段。
+ * 未设置的 `std::optional` 表示不修改该项，沿用设备当前值。
+ */
+struct CodeReaderOpenParams {
+    std::optional<std::string> triggerMode;
+    std::optional<std::string> triggerSource;
+};
+
+/** 读码（BCR）结果列表回调；在 SDK 线程触发。 */
+using CodeReaderBcrCallback = std::function<void(std::vector<std::string>)>;
+
 std::vector<CodeReaderInfo> enumDevice();
 
-/** 按序列号开始取流（内部完成打开设备、注册图像回调、StartGrabbing）。 */
-void startDevice(const std::string &sn);
+/**
+ * 按序列号开始取流（内部完成打开设备、在 Open 阶段应用 @p params 中已设字段、可选注册 BCR 回调、StartGrabbing）。
+ * @param params 未设置的 `std::optional` 表示不修改该项。已在取流（Grabbing）且 @p params 含任意已设字段时抛 `std::logic_error`（须先 `stopDevice`）。
+ * @param onBcrCodes `std::nullopt` 表示不修改该序列号上已登记的回调；传入非空函数则注册/覆盖；传入已 engaged 的空 `std::function` 则取消该序列号回调。已在取流时仅更新回调表并刷新 SDK 绑定，不重复起流。
+ */
+void startDevice(const std::string &sn, const CodeReaderOpenParams &params = {},
+                 const std::optional<CodeReaderBcrCallback> &onBcrCodes = std::nullopt);
 
-/** 按序列号停止取流并关闭设备（句柄仍缓存，除非 setIp 等会 destroy）。 */
+/** 按序列号停止取流并关闭设备（句柄仍缓存在本库映射中）。 */
 void stopDevice(const std::string &sn);
-
-/**
- * 将设备置为「已 OpenDevice、未取流」（Open），以便改 GigE IP（setIp）或写 GenICam 节点（setIntValue 等）。
- * 当前为取流（Grabbing）时抛异常，须先 stopDevice；已为 Open 则无操作。
- *
- * 上述接口均要求设备处于 Open；若正在取流须先 stopDevice 再调用本函数，
- * 否则抛 std::logic_error。未缓存设备时本函数会创建句柄（与 startDevice 相同）。
- */
-void openDeviceForParameters(const std::string &sn);
-
-/** GigE 强制改设备 IP / 掩码 / 网关（与下方按类型的 GenICam 参数设置不同类）。成功后常伴随设备重启与本地句柄释放。 */
-void setIp(const std::string &sn, const std::string &ip, const std::string &mask, const std::string &gateway);
-
-/**
- * 按序列号注册读码结果回调；在识别到条码且类型为 BCR 时，于 SDK 线程仅向该序列号对应的回调派发。
- * 空 std::function 表示取消该序列号的回调；未注册则静默丢弃。同一序列号再次注册时覆盖旧回调。
- * 若该序列号设备已在取流，会刷新 SDK 图像回调绑定。
- */
-void registerImageCallbackForSerial(const std::string &sn,
-                                    const std::function<void(std::vector<std::string>)> &callback);
 
 /**
  * 软触发（TriggerSoftware）。要求：已成功 startDevice，当前处于取流中。
  * @throws std::logic_error 未缓存设备或未在取流状态
  */
 void triggerDevice(const std::string &sn);
-
-/** GenICam 节点写参（整型/字符串/布尔/浮点/枚举）。须先 openDeviceForParameters，设备处于 Open（未取流）。 */
-void setIntValue(const std::string &sn, const std::string &key, int value);
-void setStringValue(const std::string &sn, const std::string &key, const std::string &value);
-void setBoolValue(const std::string &sn, const std::string &key, bool value);
-void setFloatValue(const std::string &sn, const std::string &key, float value);
-void setEnumValue(const std::string &sn, const std::string &key, unsigned int value);
-void setEnumValueByString(const std::string &sn, const std::string &key, const std::string &symbolic);

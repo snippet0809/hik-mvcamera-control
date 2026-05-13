@@ -6,9 +6,10 @@
  */
 
 #include <cstdint>
-#include <istream>
+#include <functional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 /** 设备在本库中的运行状态（句柄 / 已打开 / 取流）。 */
 enum class CodeReaderStatus {
@@ -40,6 +41,18 @@ void destroyDevice(const std::string &sn);
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 
+/** BCR 回调表与 SDK 绑定；仅供本库 .cpp / C API 实现调用，非 `code_reader.h` 公开 API。 */
+void registerImageCallbackForSerial(const std::string &sn,
+                                    const std::function<void(std::vector<std::string>)> &callback);
+
+/** GenICam 写参：仅供本库其它 .cpp 调用，非 `code_reader.h` 公开 API。 */
+void setIntValue(const std::string &sn, const std::string &key, int value);
+void setStringValue(const std::string &sn, const std::string &key, const std::string &value);
+void setBoolValue(const std::string &sn, const std::string &key, bool value);
+void setFloatValue(const std::string &sn, const std::string &key, float value);
+void setEnumValue(const std::string &sn, const std::string &key, unsigned int value);
+void setEnumValueByString(const std::string &sn, const std::string &key, const std::string &symbolic);
+
 inline std::string toHexStr(int value) {
     std::stringstream ss;
     ss << "0x" << std::hex << std::uppercase << static_cast<std::uint32_t>(value);
@@ -53,34 +66,4 @@ inline std::string intToIp(unsigned int ip) {
        << ((ip >> 8) & 0xFF) << "."
        << (ip & 0xFF);
     return ss.str();
-}
-
-inline bool tryParseIpv4HostOrder(const std::string &ip, unsigned int &out) {
-    int octets[4] = {};
-    char dot = 0;
-    std::istringstream iss(ip);
-    if (!(iss >> octets[0] >> dot) || dot != '.') {
-        return false;
-    }
-    if (!(iss >> octets[1] >> dot) || dot != '.') {
-        return false;
-    }
-    if (!(iss >> octets[2] >> dot) || dot != '.') {
-        return false;
-    }
-    if (!(iss >> octets[3])) {
-        return false;
-    }
-    iss >> std::ws;
-    if (!iss.eof()) {
-        return false;
-    }
-    for (int o : octets) {
-        if (o < 0 || o > 255) {
-            return false;
-        }
-    }
-    out = (static_cast<unsigned int>(octets[0]) << 24) | (static_cast<unsigned int>(octets[1]) << 16) |
-          (static_cast<unsigned int>(octets[2]) << 8) | static_cast<unsigned int>(octets[3]);
-    return true;
 }

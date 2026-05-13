@@ -6,6 +6,7 @@
 #include "hik_code_reader/c_api.h"
 
 #include "code_reader.h"
+#include "code_reader_detail.h"
 
 #include <algorithm>
 #include <cstring>
@@ -114,22 +115,6 @@ HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
     return wrap([&] { stopDevice(serial_utf8); });
 }
 
-HIK_CR_API HikCrResult hik_cr_open_device_for_parameters(const char *serial_utf8) {
-    if (!requireNonNull(serial_utf8, "serial_utf8")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { openDeviceForParameters(serial_utf8); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_ip(const char *serial_utf8, const char *ip, const char *mask,
-                                     const char *gateway) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(ip, "ip") ||
-        !requireNonNull(mask, "mask") || !requireNonNull(gateway, "gateway")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setIp(serial_utf8, ip, mask, gateway); });
-}
-
 HIK_CR_API HikCrResult hik_cr_register_bcr_callback_for_serial(const char *serial_utf8, HikCrBcrCallback cb,
                                                                void *user_data) {
     if (!requireNonNull(serial_utf8, "serial_utf8")) {
@@ -157,51 +142,6 @@ HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { triggerDevice(serial_utf8); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_int_value(const char *serial_utf8, const char *key, int32_t value) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setIntValue(serial_utf8, key, static_cast<int>(value)); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_string_value(const char *serial_utf8, const char *key, const char *value) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key") ||
-        !requireNonNull(value, "value")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setStringValue(serial_utf8, key, value); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_bool_value(const char *serial_utf8, const char *key, int32_t non_zero) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setBoolValue(serial_utf8, key, non_zero != 0); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_float_value(const char *serial_utf8, const char *key, float value) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setFloatValue(serial_utf8, key, value); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_enum_value(const char *serial_utf8, const char *key, uint32_t value) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setEnumValue(serial_utf8, key, value); });
-}
-
-HIK_CR_API HikCrResult hik_cr_set_enum_value_by_string(const char *serial_utf8, const char *key,
-                                                       const char *symbolic) {
-    if (!requireNonNull(serial_utf8, "serial_utf8") || !requireNonNull(key, "key") ||
-        !requireNonNull(symbolic, "symbolic")) {
-        return HIK_CR_ERR_INVALID_ARG;
-    }
-    return wrap([&] { setEnumValueByString(serial_utf8, key, symbolic); });
 }
 
 HIK_CR_API size_t hik_cr_last_error_copy(char *out_utf8, size_t buf_size) {

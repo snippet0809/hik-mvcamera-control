@@ -93,24 +93,6 @@ func StopDevice(serial string) error {
 	return check(C.hik_cr_stop_device(cs))
 }
 
-func OpenDeviceForParameters(serial string) error {
-	cs := C.CString(serial)
-	defer C.free(unsafe.Pointer(cs))
-	return check(C.hik_cr_open_device_for_parameters(cs))
-}
-
-func SetIP(serial, ip, mask, gateway string) error {
-	cs := C.CString(serial)
-	cip := C.CString(ip)
-	cm := C.CString(mask)
-	cg := C.CString(gateway)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(cip))
-	defer C.free(unsafe.Pointer(cm))
-	defer C.free(unsafe.Pointer(cg))
-	return check(C.hik_cr_set_ip(cs, cip, cm, cg))
-}
-
 func TriggerDevice(serial string) error {
 	cs := C.CString(serial)
 	defer C.free(unsafe.Pointer(cs))
@@ -154,60 +136,4 @@ func RegisterBcrCallbackForSerial(serial string, fn func([]string)) error {
 		cb = C.hikcr_wrap_bcr_shim()
 	}
 	return check(C.hik_cr_register_bcr_callback_for_serial(cs, cb, nil))
-}
-
-func SetIntValue(serial, key string, value int32) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	return check(C.hik_cr_set_int_value(cs, ck, C.int32_t(value)))
-}
-
-func SetStringValue(serial, key, value string) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	cv := C.CString(value)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	defer C.free(unsafe.Pointer(cv))
-	return check(C.hik_cr_set_string_value(cs, ck, cv))
-}
-
-func SetBoolValue(serial, key string, v bool) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	nv := C.int32_t(0)
-	if v {
-		nv = 1
-	}
-	return check(C.hik_cr_set_bool_value(cs, ck, nv))
-}
-
-func SetFloatValue(serial, key string, value float32) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	return check(C.hik_cr_set_float_value(cs, ck, C.float(value)))
-}
-
-func SetEnumValue(serial, key string, value uint32) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	return check(C.hik_cr_set_enum_value(cs, ck, C.uint32_t(value)))
-}
-
-func SetEnumValueByString(serial, key, symbolic string) error {
-	cs := C.CString(serial)
-	ck := C.CString(key)
-	cs2 := C.CString(symbolic)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ck))
-	defer C.free(unsafe.Pointer(cs2))
-	return check(C.hik_cr_set_enum_value_by_string(cs, ck, cs2))
 }
