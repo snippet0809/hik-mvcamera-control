@@ -394,6 +394,7 @@ def _load_dll(path: str | None) -> ctypes.CDLL:
 class HikCodeReader:
     def __init__(self, dll_path: str | None = None) -> None:
         self._lib = _load_dll(dll_path)
+        self._bcr_keepalive: dict[str, BcrCallback] = {}
         self._setup_prototypes()
 
     def _setup_prototypes(self) -> None:
@@ -478,7 +479,13 @@ class HikCodeReader:
 
     def register_bcr_callback_for_serial(self, sn: str, cb: Callable[..., None] | None, user_data: int = 0) -> None:
         # ctypes 不能把 Python None 当作 C 函数指针 NULL；需显式空指针以注销回调。
-        cb_arg = cast(0, BcrCallback) if cb is None else cb
+        # 须长期持有 BcrCallback 对象，否则 C 层仍保存函数指针时 Python 侧可能 GC 掉包装，回调时崩溃。
+        if cb is None:
+            self._bcr_keepalive.pop(sn, None)
+            cb_arg = cast(0, BcrCallback)
+        else:
+            cb_arg = cb if isinstance(cb, BcrCallback) else BcrCallback(cb)
+            self._bcr_keepalive[sn] = cb_arg
         self.check(
             self._lib.hik_cr_register_bcr_callback_for_serial(
                 sn.encode("utf-8"), cb_arg, c_void_p(user_data)
