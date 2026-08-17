@@ -40,16 +40,22 @@ void __stdcall imageBridge(unsigned char *, MV_CODEREADER_IMAGE_OUT_INFO *fi, vo
         return;
     }
     auto *dev = static_cast<CodeReader *>(pUser);
-    auto it = g_bcr.find(dev->serialNumber);
-    if (it == g_bcr.end() || !it->second) {
-        return;
+    CodeReaderBcrCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(g_device_mutex);
+        auto it = g_bcr.find(dev->serialNumber);
+        if (it == g_bcr.end() || !it->second) {
+            return;
+        }
+        cb = it->second;
     }
-    it->second(bcrStrings(*fi));
+    cb(bcrStrings(*fi));
 }
 
 } // namespace
 
 void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCallback &cb) {
+    // 调用方须已持有 g_device_mutex。
     if (cb) {
         g_bcr[sn] = cb;
     } else {
@@ -62,6 +68,7 @@ void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCa
 }
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
+    // 调用方须已持有 g_device_mutex。
     if (!device || !device->handle) {
         return;
     }
@@ -75,6 +82,7 @@ void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
 }
 
 void triggerDevice(const std::string &sn) {
+    std::lock_guard<std::mutex> lock(g_device_mutex);
     CodeReader *d = findDevice(sn);
     if (!d || d->status != CodeReaderStatus::Grabbing) {
         throw std::logic_error("triggerDevice: 须已 startDevice 且处于取流");

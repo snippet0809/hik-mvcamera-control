@@ -5,8 +5,10 @@
 #include "code_reader_detail.h"
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
+std::mutex g_device_mutex;
 std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
 namespace {
@@ -19,11 +21,26 @@ std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
 } // namespace
 
 CodeReader::CodeReader(const std::string &serialNumber)
-    : serialNumber(serialNumber), handle(nullptr), status(CodeReaderStatus::Connected) {
+    : serialNumber(serialNumber),
+      handle(nullptr),
+      status(CodeReaderStatus::Connected),
+      handleStale(false) {
     const int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str());
     if (ok != MV_CODEREADER_OK) {
         throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
     }
+}
+
+void CodeReader::recreateHandle() {
+    if (handle) {
+        MV_CODEREADER_DestroyHandle(handle);
+        handle = nullptr;
+    }
+    const int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str());
+    if (ok != MV_CODEREADER_OK) {
+        throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
+    }
+    handleStale = false;
 }
 
 CodeReader::~CodeReader() {
@@ -58,11 +75,13 @@ std::vector<CodeReaderInfo> enumDevice() {
 }
 
 CodeReader *findDevice(const std::string &sn) {
+    // 调用方须已持有 g_device_mutex。
     const auto it = deviceMap.find(sn);
     return it == deviceMap.end() ? nullptr : it->second.get();
 }
 
 CodeReader *getOrCreateDevice(const std::string &sn) {
+    // 调用方须已持有 g_device_mutex。
     const auto it = deviceMap.find(sn);
     if (it != deviceMap.end()) {
         return it->second.get();

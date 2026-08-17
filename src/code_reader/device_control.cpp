@@ -57,6 +57,7 @@ void CodeReader::grabbing() {
 }
 
 void CodeReader::close() {
+    // 调用方须已持有 g_device_mutex。
     if (status == CodeReaderStatus::Connected) {
         return;
     }
@@ -67,10 +68,13 @@ void CodeReader::close() {
     if (status == CodeReaderStatus::Open) {
         checkSdk(MV_CODEREADER_CloseDevice(handle), "MV_CODEREADER_CloseDevice");
         status = CodeReaderStatus::Connected;
+        // CloseDevice 之后 SDK 不允许拿该句柄再次 OpenDevice（返回 0x80020000），须先重建。
+        handleStale = true;
     }
 }
 
 void stopDevice(const std::string &sn) {
+    std::lock_guard<std::mutex> lock(g_device_mutex);
     CodeReader *cr = findDevice(sn);
     if (cr) {
         cr->close();
@@ -79,6 +83,7 @@ void stopDevice(const std::string &sn) {
 
 void startDevice(const std::string &sn, const CodeReaderOpenParams &params,
                  const std::optional<CodeReaderBcrCallback> &onBcrCodes) {
+    std::lock_guard<std::mutex> lock(g_device_mutex);
     CodeReader *cr = getOrCreateDevice(sn);
     const auto reg = [&] {
         if (onBcrCodes) {
@@ -91,6 +96,10 @@ void startDevice(const std::string &sn, const CodeReaderOpenParams &params,
     }
     reg();
     if (cr->status == CodeReaderStatus::Connected) {
+        if (cr->handleStale) {
+            // 修复：stop 后再 start 时旧句柄已 CloseDevice，重建后 OpenDevice 才能成功。
+            cr->recreateHandle();
+        }
         cr->open();
     }
     applyOpenParams(cr, params);
