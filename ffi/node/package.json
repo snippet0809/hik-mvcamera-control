@@ -1,7 +1,7 @@
 {
-  "name": "hik-code-reader",
+  "name": "hik-mvcamera-control",
   "version": "0.1.0",
-  "description": "N-API native addon + JS wrapper for Hikrobot code reader (MvCodeReader) C API — Windows x64, bundles Hikvision runtime DLLs",
+  "description": "N-API native addon + JS wrapper for Hikrobot code reader (MvCodeReader) AND industrial camera (MvCamera) C APIs — Windows x64, bundles Hikvision runtimes",
   "main": "index.js",
   "types": "index.d.ts",
   "gypfile": true,

@@ -1,12 +1,15 @@
 /**
- * @file addon.cc
- * @brief N-API 原生插件：封装 hik_mvcamera C ABI（hik_cv_*）。
+ * @file camera_addon.cc
+ * @brief 统一插件（hik-mvcamera-control）的相机部分：封装 hik_mvcamera C ABI（hik_cv_*）。
  *
  * - 链接 `hik_mvcamera.lib`（DLL 导入库），运行时加载同一个 hik_mvcamera.dll。
  * - 图像回调：SDK 抓图线程调用 C ABI 回调 → 帧数据同步拷入 payload → `napi_threadsafe_function`
  *   排到 JS 主线程 → 拷成 `Napi::Buffer` → 调 JS 回调 `(serial, frameInfo, buffer)`。
- *   创建 tsfn 后 `Unref`（不 hold 事件循环，镜像 ffi/node 的读码器修复）。
+ *   创建 tsfn 后 `Unref`（不 hold 事件循环）。
  * - 错误：`HikCvResult != OK` 时 throw `Napi::Error`，消息取 `hik_cv_last_error_copy`。
+ *
+ * 本文件只含相机部分（`RegisterCamera` 供 addon.cc 的统一 Init 调用）；
+ * 读码器部分见 reader_addon.cc。
  */
 
 #include <napi.h>
@@ -349,11 +352,13 @@ Napi::Value LastError(const Napi::CallbackInfo& info) {
     return Napi::String::New(info.Env(), lastErrorString());
 }
 
+}  // namespace
+
 // ---------------------------------------------------------------------------
-// 模块初始化
+// 注册相机部分到 exports（供 addon.cc 的统一 Init 调用）
 // ---------------------------------------------------------------------------
 
-Napi::Object Init(Napi::Env env, Napi::Object exports) {
+Napi::Object RegisterCamera(Napi::Env env, Napi::Object exports) {
     exports.Set("enumDevices", Napi::Function::New(env, EnumDevices));
     exports.Set("startDevice", Napi::Function::New(env, StartDevice));
     exports.Set("stopDevice", Napi::Function::New(env, StopDevice));
@@ -376,7 +381,3 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     env.AddCleanupHook([]() { clearAllFrames(); });
     return exports;
 }
-
-}  // namespace
-
-NODE_API_MODULE(hik_mvcamera, Init)

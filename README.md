@@ -180,7 +180,7 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 | `python/` | **`hik-code-reader`** 包与 `pyproject.toml`（wheel 的 `_native/` 含 DLL 与海康 win64 导入库） |
 | `ffi/python/` | ctypes 参考实现（与 `python/hik_code_reader` 保持同步为佳） |
 | `ffi/go/` | Go 子模块（`go.mod`）；包目录 `hikcr` |
-| `ffi/node/` | **N-API 原生插件**（node-addon-api）包；预编译 `.node` + 海康运行时全捆绑 |
+| `ffi/node/` | **统一 npm 包 `hik-mvcamera-control`**（node-addon-api）：单插件同时导出读码器（`HikCodeReader`）与相机（`HikCamera`）；预编译 `.node` + 读码器/相机运行时全捆绑 |
 | `include/MvCamera/`、`include/MvCodeReader/` | 海康 SDK 头文件 |
 | `lib/MvCamera/{win32,win64}/`、`lib/MvCodeReader/{win32,win64}/` | 预置静态库（含 `turbojpeg` 等读码器依赖） |
 | `tests/` | GTest 用例（需连接真实设备时谨慎运行） |
