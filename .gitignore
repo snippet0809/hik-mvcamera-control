@@ -14,6 +14,7 @@ python/dist/
 
 # Copied in for local wheel builds (tracked: _native/.gitkeep)
 python/hik_code_reader/_native/*.dll
+python/hik_code_reader/_native/*.lib
 
 # Local PEP 503 preview / release asset dry-run (see release workflow)
 site/

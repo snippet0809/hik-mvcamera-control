@@ -74,11 +74,9 @@ void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device) {
     }
     auto it = g_bcr.find(device->serialNumber);
     const bool on = it != g_bcr.end() && it->second;
-    const int ok = MV_CODEREADER_RegisterImageCallBack(device->handle, on ? imageBridge : nullptr,
-                                                       on ? static_cast<void *>(device) : nullptr);
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_RegisterImageCallBack error: " + toHexStr(ok));
-    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_RegisterImageCallBack(device->handle, on ? imageBridge : nullptr,
+                                                                   on ? static_cast<void *>(device) : nullptr),
+                               "MV_CODEREADER_RegisterImageCallBack");
 }
 
 void triggerDevice(const std::string &sn) {
@@ -87,9 +85,6 @@ void triggerDevice(const std::string &sn) {
     if (!d || d->status != CodeReaderStatus::Grabbing) {
         throw std::logic_error("triggerDevice: 须已 startDevice 且处于取流");
     }
-    const int ok = MV_CODEREADER_SetCommandValue(d->handle, kTriggerSoftware);
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error(std::string("MV_CODEREADER_SetCommandValue(") + kTriggerSoftware + ") error: " +
-                                 toHexStr(ok));
-    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_SetCommandValue(d->handle, kTriggerSoftware),
+                               "MV_CODEREADER_SetCommandValue");
 }

@@ -13,27 +13,6 @@ std::unordered_map<std::string, std::shared_ptr<CameraDevice>> cameraMap;
 
 namespace {
 
-void checkSdk(int ok, const char* api) {
-    if (ok != MV_OK) {
-        throw std::runtime_error(std::string(api) + " error: " + toHexStr(ok));
-    }
-}
-
-std::string bytesToStr(const unsigned char* buf, std::size_t len) {
-    if (!buf) {
-        return {};
-    }
-    const char* p = reinterpret_cast<const char*>(buf);
-    return std::string(p, strnlen(p, len));
-}
-
-std::string intToIp(unsigned int ip) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF,
-                  ip & 0xFF);
-    return buf;
-}
-
 unsigned int ipToUint(const std::string& s) {
     unsigned int a = 0, b = 0, c = 0, d = 0;
     if (std::sscanf(s.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
@@ -44,7 +23,7 @@ unsigned int ipToUint(const std::string& s) {
 
 const MV_CC_DEVICE_INFO* findDeviceInfoBySerial(const std::string& serial) {
     MV_CC_DEVICE_INFO_LIST list{};
-    checkSdk(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
+    checkSdk<MV_OK>(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
     for (unsigned i = 0; i < list.nDeviceNum; ++i) {
         const MV_CC_DEVICE_INFO* p = list.pDeviceInfo[i];
         if (!p) {
@@ -76,7 +55,7 @@ CameraDevice::CameraDevice(const std::string& serialNumber)
     if (!devInfo) {
         throw std::runtime_error("camera not found by serial: " + serialNumber);
     }
-    checkSdk(MV_CC_CreateHandle(&handle, devInfo), "MV_CC_CreateHandle");
+    checkSdk<MV_OK>(MV_CC_CreateHandle(&handle, devInfo), "MV_CC_CreateHandle");
 }
 
 CameraDevice::~CameraDevice() {
@@ -93,7 +72,7 @@ CameraDevice::~CameraDevice() {
 
 std::vector<CameraInfo> enumCamera() {
     MV_CC_DEVICE_INFO_LIST list{};
-    checkSdk(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
+    checkSdk<MV_OK>(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
     std::vector<CameraInfo> infos;
     for (unsigned i = 0; i < list.nDeviceNum; ++i) {
         const MV_CC_DEVICE_INFO* p = list.pDeviceInfo[i];
@@ -128,9 +107,9 @@ void forceCameraIp(const std::string& sn, const std::string& ip, const std::stri
         throw std::runtime_error("camera not found by serial: " + sn);
     }
     void* h = nullptr;
-    checkSdk(MV_CC_CreateHandle(&h, devInfo), "MV_CC_CreateHandle");
+    checkSdk<MV_OK>(MV_CC_CreateHandle(&h, devInfo), "MV_CC_CreateHandle");
     try {
-        checkSdk(MV_GIGE_ForceIpEx(h, ipToUint(ip), ipToUint(subnetMask), ipToUint(gateway)),
+        checkSdk<MV_OK>(MV_GIGE_ForceIpEx(h, ipToUint(ip), ipToUint(subnetMask), ipToUint(gateway)),
                  "MV_GIGE_ForceIpEx");
     } catch (...) {
         MV_CC_DestroyHandle(h);

@@ -113,8 +113,8 @@ class HikCodeReader:
         if clear_bcr:
             act, cb_arg = HIK_CR_BCR_CLEAR, cast(0, BcrCallback)
         elif on_bcr is not None:
-            act, cb_arg = HIK_CR_BCR_SET, on_bcr
-            self._bcr_keepalive[sn] = on_bcr
+            # 普通可调用对象需包成 CFUNCTYPE 并保活，否则 ctypes 临时包装会被 GC 而 C 侧仍持有指针
+            act, cb_arg = HIK_CR_BCR_SET, on_bcr if isinstance(on_bcr, BcrCallback) else BcrCallback(on_bcr)
         else:
             act, cb_arg = HIK_CR_BCR_KEEP, cast(0, BcrCallback)
         raw = sn.encode("utf-8")
@@ -140,6 +140,11 @@ class HikCodeReader:
         self.check(
             self._lib.hik_cr_start_device(raw, byref(c_open) if c_open else None, act, cb_arg, c_void_p(bcr_user_data))
         )
+        # keepalive 在 C 登记成功后再更新；CLEAR 成功后再弹出
+        if clear_bcr:
+            self._bcr_keepalive.pop(sn, None)
+        elif on_bcr is not None:
+            self._bcr_keepalive[sn] = cb_arg
 
     def stop_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))

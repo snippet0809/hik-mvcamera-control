@@ -7,17 +7,11 @@
 
 namespace {
 
-void checkSdk(int ok, const char* api) {
-    if (ok != MV_OK) {
-        throw std::runtime_error(std::string(api) + " error: " + toHexStr(ok));
-    }
-}
-
 void openIfConnected(CameraDevice* d) {
     if (d->status != CameraStatus::Connected) {
         return;
     }
-    checkSdk(MV_CC_OpenDevice(d->handle, MV_ACCESS_Exclusive, 0), "MV_CC_OpenDevice");
+    checkSdk<MV_OK>(MV_CC_OpenDevice(d->handle, MV_ACCESS_Exclusive, 0), "MV_CC_OpenDevice");
     d->status = CameraStatus::Open;
 }
 
@@ -27,10 +21,10 @@ void applyOpenParams(CameraDevice* d, const CameraOpenParams& p) {
     }
     void* h = d->handle;
     if (!p.triggerMode.empty()) {
-        checkSdk(MV_CC_SetEnumValueByString(h, "TriggerMode", p.triggerMode.c_str()), "SetEnum(TriggerMode)");
+        checkSdk<MV_OK>(MV_CC_SetEnumValueByString(h, "TriggerMode", p.triggerMode.c_str()), "SetEnum(TriggerMode)");
     }
     if (!p.triggerSource.empty()) {
-        checkSdk(MV_CC_SetEnumValueByString(h, "TriggerSource", p.triggerSource.c_str()),
+        checkSdk<MV_OK>(MV_CC_SetEnumValueByString(h, "TriggerSource", p.triggerSource.c_str()),
                  "SetEnum(TriggerSource)");
     }
 }
@@ -54,7 +48,7 @@ void CameraDevice::grabbing() {
     openIfConnected(this);
     if (status == CameraStatus::Open) {
         cameraInternalBindImageCallbackBeforeGrabbing(this);
-        checkSdk(MV_CC_StartGrabbing(handle), "MV_CC_StartGrabbing");
+        checkSdk<MV_OK>(MV_CC_StartGrabbing(handle), "MV_CC_StartGrabbing");
         status = CameraStatus::Grabbing;
     }
 }
@@ -64,11 +58,11 @@ void CameraDevice::close() {
         return;
     }
     if (status == CameraStatus::Grabbing) {
-        checkSdk(MV_CC_StopGrabbing(handle), "MV_CC_StopGrabbing");
+        checkSdk<MV_OK>(MV_CC_StopGrabbing(handle), "MV_CC_StopGrabbing");
         status = CameraStatus::Open;
     }
     if (status == CameraStatus::Open) {
-        checkSdk(MV_CC_CloseDevice(handle), "MV_CC_CloseDevice");
+        checkSdk<MV_OK>(MV_CC_CloseDevice(handle), "MV_CC_CloseDevice");
         status = CameraStatus::Connected;
     }
 }
@@ -88,14 +82,13 @@ void startCamera(const std::string& sn, const CameraOpenParams& params,
             registerFrameCallbackForSerial(sn, *onFrame);
         }
     };
+    reg();
     if (cam->status == CameraStatus::Grabbing) {
-        reg();
         return;
     }
-    reg();
     if (cam->status == CameraStatus::Connected) {
         if (params.netTransMode != 0) {
-            checkSdk(MV_GIGE_SetNetTransMode(cam->handle, static_cast<unsigned int>(params.netTransMode)),
+            checkSdk<MV_OK>(MV_GIGE_SetNetTransMode(cam->handle, static_cast<unsigned int>(params.netTransMode)),
                      "MV_GIGE_SetNetTransMode");
         }
         cam->open();

@@ -8,12 +8,6 @@
 
 namespace {
 
-void checkSdk(int ok, const char* api) {
-    if (ok != MV_OK) {
-        throw std::runtime_error(std::string(api) + " error: " + toHexStr(ok));
-    }
-}
-
 } // namespace
 
 void setCameraParam(const std::string& sn, const std::string& name, const CamParamValue& value) {
@@ -37,17 +31,17 @@ void setCameraParam(const std::string& sn, const std::string& name, const CamPar
                     }
                 }
             } else if constexpr (std::is_same_v<T, double>) {
-                checkSdk(MV_CC_SetFloatValue(h, name.c_str(), static_cast<float>(v)),
+                checkSdk<MV_OK>(MV_CC_SetFloatValue(h, name.c_str(), static_cast<float>(v)),
                          ("SetFloat(" + name + ")").c_str());
             } else if constexpr (std::is_same_v<T, bool>) {
-                checkSdk(MV_CC_SetBoolValue(h, name.c_str(), v), ("SetBool(" + name + ")").c_str());
+                checkSdk<MV_OK>(MV_CC_SetBoolValue(h, name.c_str(), v), ("SetBool(" + name + ")").c_str());
             } else if constexpr (std::is_same_v<T, uint32_t>) {
-                checkSdk(MV_CC_SetEnumValue(h, name.c_str(), v), ("SetEnum(" + name + ")").c_str());
+                checkSdk<MV_OK>(MV_CC_SetEnumValue(h, name.c_str(), v), ("SetEnum(" + name + ")").c_str());
             } else if constexpr (std::is_same_v<T, std::string>) {
                 // 字符串值：优先按枚举 symbolic 设置，失败回退为字符串节点
                 int r = MV_CC_SetEnumValueByString(h, name.c_str(), v.c_str());
                 if (r != MV_OK) {
-                    checkSdk(MV_CC_SetStringValue(h, name.c_str(), v.c_str()),
+                    checkSdk<MV_OK>(MV_CC_SetStringValue(h, name.c_str(), v.c_str()),
                              ("SetString(" + name + ")").c_str());
                 }
             }
@@ -60,7 +54,7 @@ void runCameraCommand(const std::string& sn, const std::string& name) {
     if (!d || !d->handle) {
         throw std::logic_error("runCameraCommand: 设备未 startCamera");
     }
-    checkSdk(MV_CC_SetCommandValue(d->handle, name.c_str()), ("SetCommand(" + name + ")").c_str());
+    checkSdk<MV_OK>(MV_CC_SetCommandValue(d->handle, name.c_str()), ("SetCommand(" + name + ")").c_str());
 }
 
 CamParamValue getCameraParam(const std::string& sn, const std::string& name) {

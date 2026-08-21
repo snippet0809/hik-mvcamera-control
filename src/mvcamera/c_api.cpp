@@ -125,7 +125,8 @@ HIK_CV_API HikCvResult hik_cv_enum_devices(HikCvDeviceInfo** out_list, int* out_
                 !copyTo(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp) ||
                 !copyTo(arr[i].model_name, sizeof(arr[i].model_name), devs[i].modelName)) {
                 delete[] arr;
-                throw std::runtime_error("hik_cv_enum_devices copy");
+                // copyTo 已把具体原因写入 g_err，保留精确错误而非通用文案
+                throw std::runtime_error("hik_cv_enum_devices copy: " + g_err);
             }
         }
         *out_list = arr;

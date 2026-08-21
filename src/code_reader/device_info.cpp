@@ -13,11 +13,6 @@ std::unordered_map<std::string, std::shared_ptr<CodeReader>> deviceMap;
 
 namespace {
 
-std::string gigESerialToString(const unsigned char *buf, std::size_t len) {
-    const char *p = reinterpret_cast<const char *>(buf);
-    return std::string(p, strnlen(p, len));
-}
-
 } // namespace
 
 CodeReader::CodeReader(const std::string &serialNumber)
@@ -25,10 +20,8 @@ CodeReader::CodeReader(const std::string &serialNumber)
       handle(nullptr),
       status(CodeReaderStatus::Connected),
       handleStale(false) {
-    const int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str());
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
-    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str()),
+                               "MV_CODEREADER_CreateHandleBySerialNumber");
 }
 
 void CodeReader::recreateHandle() {
@@ -36,10 +29,8 @@ void CodeReader::recreateHandle() {
         MV_CODEREADER_DestroyHandle(handle);
         handle = nullptr;
     }
-    const int ok = MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str());
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_CreateHandleBySerialNumber error: " + toHexStr(ok));
-    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_CreateHandleBySerialNumber(&handle, serialNumber.c_str()),
+                               "MV_CODEREADER_CreateHandleBySerialNumber");
     handleStale = false;
 }
 
@@ -57,19 +48,26 @@ CodeReader::~CodeReader() {
 
 std::vector<CodeReaderInfo> enumDevice() {
     MV_CODEREADER_DEVICE_INFO_LIST stDevList{};
-    const int ok = MV_CODEREADER_EnumCodeReader(&stDevList);
-    if (ok != MV_CODEREADER_OK) {
-        throw std::runtime_error("MV_CODEREADER_EnumCodeReader error: " + toHexStr(ok));
-    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_EnumCodeReader(&stDevList), "MV_CODEREADER_EnumCodeReader");
     std::vector<CodeReaderInfo> infos;
     for (unsigned i = 0; i < stDevList.nDeviceNum; ++i) {
         MV_CODEREADER_DEVICE_INFO *pinfo = stDevList.pDeviceInfo[i];
-        if (!pinfo || pinfo->nTLayerType != MV_CODEREADER_GIGE_DEVICE) {
+        if (!pinfo) {
             continue;
         }
-        const auto &gige = pinfo->SpecialInfo.stGigEInfo;
-        infos.push_back({gigESerialToString(gige.chSerialNumber, sizeof(gige.chSerialNumber)),
-                         intToIp(gige.nNetExport)});
+        CodeReaderInfo info;
+        if (pinfo->nTLayerType == MV_CODEREADER_GIGE_DEVICE) {
+            const auto &gige = pinfo->SpecialInfo.stGigEInfo;
+            info.serialNumber = bytesToStr(gige.chSerialNumber, sizeof(gige.chSerialNumber));
+            info.netExportIp = intToIp(gige.nNetExport);
+        } else if (pinfo->nTLayerType == MV_CODEREADER_USB_DEVICE) {
+            const auto &usb = pinfo->SpecialInfo.stUsb3VInfo;
+            info.serialNumber = bytesToStr(usb.chSerialNumber, sizeof(usb.chSerialNumber));
+            info.netExportIp.clear();  // USB 读码器无 IP
+        } else {
+            continue;
+        }
+        infos.push_back(std::move(info));
     }
     return infos;
 }

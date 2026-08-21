@@ -75,11 +75,9 @@ void cameraInternalBindImageCallbackBeforeGrabbing(CameraDevice* device) {
             cb = it->second;
         }
     }
-    const int ok = MV_CC_RegisterImageCallBackEx(device->handle, cb ? imageBridge : nullptr,
-                                                 cb ? static_cast<void*>(device) : nullptr);
-    if (ok != MV_OK) {
-        throw std::runtime_error("MV_CC_RegisterImageCallBackEx error: " + toHexStr(ok));
-    }
+    checkSdk<MV_OK>(MV_CC_RegisterImageCallBackEx(device->handle, cb ? imageBridge : nullptr,
+                                                  cb ? static_cast<void*>(device) : nullptr),
+                    "MV_CC_RegisterImageCallBackEx");
 }
 
 void triggerCamera(const std::string& sn) {
@@ -87,9 +85,5 @@ void triggerCamera(const std::string& sn) {
     if (!d || d->status != CameraStatus::Grabbing) {
         throw std::logic_error("triggerCamera: 须已 startCamera 且处于取流（且 TriggerMode 为 On）");
     }
-    const int ok = MV_CC_SetCommandValue(d->handle, kTriggerSoftware);
-    if (ok != MV_OK) {
-        throw std::runtime_error(std::string("MV_CC_SetCommandValue(") + kTriggerSoftware + ") error: " +
-                                 toHexStr(ok));
-    }
+    checkSdk<MV_OK>(MV_CC_SetCommandValue(d->handle, kTriggerSoftware), "MV_CC_SetCommandValue");
 }

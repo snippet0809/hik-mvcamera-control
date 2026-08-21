@@ -4,9 +4,10 @@
 
 #include "code_reader.h"
 
+#include "../common/sdk_util.h"
+
 #include <cstdint>
 #include <mutex>
-#include <sstream>
 #include <string>
 
 enum class CodeReaderStatus { Connected, Open, Grabbing };
@@ -41,15 +42,3 @@ CodeReader *getOrCreateDevice(const std::string &sn);
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCallback &callback);
-
-inline std::string toHexStr(int value) {
-    std::stringstream ss;
-    ss << "0x" << std::hex << std::uppercase << static_cast<std::uint32_t>(value);
-    return ss.str();
-}
-
-inline std::string intToIp(unsigned int ip) {
-    std::stringstream ss;
-    ss << ((ip >> 24) & 0xFF) << "." << ((ip >> 16) & 0xFF) << "." << ((ip >> 8) & 0xFF) << "." << (ip & 0xFF);
-    return ss.str();
-}

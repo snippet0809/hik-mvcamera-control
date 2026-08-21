@@ -1,26 +1,32 @@
 # hik-mvcamera-control
 
-围绕海康机器人 **机器视觉 SDK** 的本地封装与工程骨架：仓库中已包含 **读码器（MvCodeReader）** 的头文件与静态库，当前 `src` 下的实现是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 **稳定 C ABI**（`include/hik_code_reader/c_api.h` + `c_api.cpp`），便于 **Python（ctypes）** 与 **Go（cgo）** 等语言加载 `hik_code_reader` 共享库调用。`include/lib` 下同时提供了 **工业相机（MvCamera）** 相关 SDK 文件，便于后续扩展相机侧逻辑。
+围绕海康机器人 **机器视觉 SDK** 的本地封装与工程骨架：仓库已包含 **读码器（MvCodeReader）** 与 **工业相机（MvCamera）** 两套 SDK 的头文件与导入库，`src/code_reader/` 与 `src/mvcamera/` 各是一套 C++ 封装（设备枚举、开关流、网络与参数设置等），并带有基于 GoogleTest 的 CMake 测试目标。对外提供 **稳定 C ABI**（`hik_cr_*` / `hik_cv_*`），便于 **Python（ctypes）**、**Go（cgo）** 与 **Node（N-API，统一包 `ffi/node` → `hik-mvcamera-control`）** 等语言加载 `hik_code_reader.dll` / `hik_mvcamera.dll` 共享库调用。
 
 ## 项目架构（分层与自动化）
 
 ### 运行时与代码分层
 
-自底向上：**厂商 SDK**（`include/`、`lib/` 中海康头文件与导入库）→ **`src/code_reader/`** C++ 封装（设备、参数、回调等）→ **导出 DLL** `hik_code_reader.dll` 及 **C ABI**（`hik_cr_*`）→ 上层语言通过 **FFI** 加载同一份 DLL：
+自底向上：**厂商 SDK**（`include/`、`lib/` 中海康头文件与导入库）→ **`src/code_reader/` / `src/mvcamera/`** C++ 封装（设备、参数、回调等）→ **导出 DLL** `hik_code_reader.dll`（`hik_cr_*`）/ `hik_mvcamera.dll`（`hik_cv_*`）→ 上层语言通过 **FFI** 加载 DLL：
 
 ```mermaid
 flowchart TB
-  SDK["海康 MvCodeReader\n头文件 / .lib"]
-  CPP["C++ 封装\nsrc/code_reader/"]
-  CAPI["C ABI\nc_api.h / c_api.cpp"]
-  DLL["hik_code_reader.dll"]
-  PY["python/hik_code_reader\n正式 wheel"]
-  G["ffi/go/hikcr\ncgo"]
-  PYref["ffi/python\nctypes 参考"]
-  SDK --> CPP --> CAPI --> DLL
-  DLL --> PY
-  DLL --> G
-  DLL -.-> PYref
+  SDK["海康机器视觉 SDK\nMvCodeReader + MvCamera\n头文件 / .lib"]
+  CPPR["C++ 封装\nsrc/code_reader/"]
+  CPPM["C++ 封装\nsrc/mvcamera/"]
+  CAPI["C ABI\nhik_cr_* / hik_cv_*"]
+  DLLR["hik_code_reader.dll"]
+  DLLM["hik_mvcamera.dll"]
+  PY["python/hik_code_reader\n正式 wheel（读码器）"]
+  G["ffi/go/hikcr\ncgo（读码器）"]
+  PYref["ffi/python\nctypes 参考（读码器）"]
+  NODE["ffi/node\nhik-mvcamera-control\n（读码器 + 相机）"]
+  SDK --> CPPR --> CAPI --> DLLR
+  SDK --> CPPM --> CAPI --> DLLM
+  DLLR --> PY
+  DLLR --> G
+  DLLR -.-> PYref
+  DLLR --> NODE
+  DLLM --> NODE
 ```
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
@@ -211,8 +217,8 @@ cmake --build build
 
 产物说明：
 
-- **`hik_code_reader_static.lib`**：静态库，供 `all_tests` 等链接。
-- **`hik_code_reader.dll`**：共享库（目标名 `hik_code_reader_shared`），导出 `hik_cr_*` 供 FFI。Python 可将环境变量 **`HIK_CODE_READER_DLL`** 设为该 DLL 的完整路径，或把 DLL 放到进程当前目录 / `PATH`。
+- **`hik_code_reader_static.lib` / `hik_mvcamera_static.lib`**：静态库，供 `all_tests` 等链接。
+- **`hik_code_reader.dll`**（目标 `hik_code_reader_shared`，导出 `hik_cr_*`）与 **`hik_mvcamera.dll`**（目标 `hik_mvcamera_shared`，导出 `hik_cv_*`）：共享库供 FFI。Python 可将环境变量 **`HIK_CODE_READER_DLL`** 设为读码器 DLL 的完整路径，或把 DLL 放到进程当前目录 / `PATH`；Node 统一包 `ffi/node`（`hik-mvcamera-control`）直接捆绑两个 DLL 与海康读码器/相机运行时。
 - **发版产物**：见上文 **Release / gh-pages**。
 
 ## 运行与部署说明

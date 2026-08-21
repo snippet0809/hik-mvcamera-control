@@ -124,7 +124,8 @@ HIK_CR_API HikCrResult hik_cr_enum_devices(HikCrDeviceInfo **out_list, int *out_
             if (!copyTo(arr[i].serial_number, sizeof(arr[i].serial_number), devs[i].serialNumber) ||
                 !copyTo(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp)) {
                 delete[] arr;
-                throw std::runtime_error("hik_cr_enum_devices copy");
+                // copyTo 已把具体原因写入 g_err，保留精确错误而非通用文案
+                throw std::runtime_error("hik_cr_enum_devices copy: " + g_err);
             }
         }
         *out_list = arr;

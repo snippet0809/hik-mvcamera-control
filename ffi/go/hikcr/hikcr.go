@@ -16,6 +16,7 @@ import "C"
 
 import (
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
@@ -80,7 +81,12 @@ func EnumDevices() ([]DeviceInfo, error) {
 	return out, nil
 }
 
-var bcrBySerial = map[string]func([]string){}
+// bcrBySerial：StartDevice（调用方 goroutine）写、hikcrGoBcrShim（SDK 抓图线程）读，
+// 须用 bcrMu 保护，否则并发读写会 fatal panic。
+var (
+	bcrBySerial = map[string]func([]string){}
+	bcrMu       sync.RWMutex
+)
 
 // StartDevice 起流。open==nil 表示全默认；bcrAction 为 BcrKeep/BcrSet/BcrClear；仅在 BcrSet 时需提供 bcrFn。
 func StartDevice(serial string, open *OpenParams, bcrAction int, bcrFn func([]string)) error {
@@ -124,10 +130,14 @@ func StartDevice(serial string, open *OpenParams, bcrAction int, bcrFn func([]st
 		if bcrFn == nil {
 			return fmt.Errorf("BcrSet requires bcrFn")
 		}
+		bcrMu.Lock()
 		bcrBySerial[serial] = bcrFn
+		bcrMu.Unlock()
 		cb = C.hikcr_wrap_bcr_shim()
 	case BcrClear:
+		bcrMu.Lock()
 		delete(bcrBySerial, serial)
+		bcrMu.Unlock()
 	}
 	return check(C.hik_cr_start_device(cs, copenPtr, C.int(bcrAction), cb, nil))
 }
@@ -152,7 +162,9 @@ func TriggerDevice(serial string) error {
 //export hikcrGoBcrShim
 func hikcrGoBcrShim(serial *C.char, codes **C.char, count C.int, _ unsafe.Pointer) {
 	sn := C.GoString(serial)
+	bcrMu.RLock()
 	fn := bcrBySerial[sn]
+	bcrMu.RUnlock()
 	if fn == nil {
 		return
 	}

@@ -301,8 +301,19 @@ def _windows_prepend_path(dirs: list[Path]) -> None:
         os.environ["PATH"] = os.pathsep.join(parts) + os.pathsep + os.environ.get("PATH", "")
 
 
+_WINDOWS_SEARCH_PREPARED = False
+
+
 def _windows_prepare_dll_search_path(dll_path: Path) -> None:
-    """``PATH`` 前置 + ``add_dll_directory``：``_native``、探测到的 MvCodeReader 目录、海康环境变量与 PATH 项。"""
+    """``PATH`` 前置 + ``add_dll_directory``：``_native``、探测到的 MvCodeReader 目录、海康环境变量与 PATH 项。
+
+    首次调用后置位，避免每次实例化重复前置 PATH（PATH 无限增长）与重复 ``add_dll_directory``
+    （返回的句柄不会被释放，重复添加会泄漏）。
+    """
+    global _WINDOWS_SEARCH_PREPARED
+    if _WINDOWS_SEARCH_PREPARED:
+        return
+    _WINDOWS_SEARCH_PREPARED = True
     if os.name != "nt":
         return
     ordered = _dedupe_existing_dirs(
@@ -486,7 +497,6 @@ class HikCodeReader:
         elif on_bcr is not None:
             bcr_action = HIK_CR_BCR_SET
             cb_arg = on_bcr if isinstance(on_bcr, BcrCallback) else BcrCallback(on_bcr)
-            self._bcr_keepalive[sn] = cb_arg
         else:
             bcr_action = HIK_CR_BCR_KEEP
             cb_arg = cast(0, BcrCallback)
@@ -522,6 +532,11 @@ class HikCodeReader:
                 c_void_p(bcr_user_data),
             )
         )
+        # keepalive 在 C 登记成功后再更新：失败时不留残余 thunk/闭包；CLEAR 成功后再弹出
+        if clear_bcr:
+            self._bcr_keepalive.pop(sn, None)
+        elif on_bcr is not None:
+            self._bcr_keepalive[sn] = cb_arg
 
     def stop_device(self, sn: str) -> None:
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))

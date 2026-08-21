@@ -36,6 +36,7 @@ include(FetchContent)
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
+    URL_HASH SHA256=40d4ec942217dcc84a9ebe2a68584ada7d4a33a8ee958755763278ea1c5e18ff
     # 解压时间戳策略，避免新版 CMake 对 CMP0135 的警告
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
@@ -44,7 +45,41 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 # -----------------------------------------------------------------------------
-# 读码器封装：源文件列表（与海康 SDK 头文件 + MvCodeReaderCtrl.lib 一起编进库）
+# 统一「包装库」目标：static + shared（DLL），共享同一份源与 include/链接配置。
+# -----------------------------------------------------------------------------
+# 用法：hik_wrapper_library(<target> <ABI 前缀> <src 目录> <SDK 头目录> <SDK 库> <源文件...>)
+#   - {target}          静态库 {target}_static.lib（供测试/其它可执行文件链接）
+#   - {target}_shared   共享库 {target}.dll，定义 {prefix}_COMPILE_DLL 导出 C ABI
+function(hik_wrapper_library target prefix src_dir sdk_inc sdk_lib)
+    # 静态库
+    add_library(${target} STATIC ${ARGN})
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME ${target}_static)
+    target_include_directories(${target}
+        PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE ${sdk_inc} ${src_dir}
+    )
+    target_link_libraries(${target} PRIVATE ${sdk_lib})
+
+    # 共享库（与静态库共用 .cpp；DLL 基础名不带上 _static 后缀，避免与静态库同名冲突）
+    add_library(${target}_shared SHARED ${ARGN})
+    target_compile_definitions(${target}_shared PRIVATE ${prefix}_COMPILE_DLL)
+    target_include_directories(${target}_shared
+        PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE ${sdk_inc} ${src_dir}
+    )
+    target_link_libraries(${target}_shared PRIVATE ${sdk_lib})
+    set_target_properties(${target}_shared PROPERTIES OUTPUT_NAME ${target})
+endfunction()
+
+# SDK 导入/静态库按目标架构选择 win64/win32（仓库两者均预置）。
+if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(HIK_SDK_ARCH win32)
+else()
+    set(HIK_SDK_ARCH win64)
+endif()
+
+# -----------------------------------------------------------------------------
+# 读码器封装（hik_cr_* C ABI → hik_code_reader.dll，链 MvCodeReaderCtrl.lib）
 # -----------------------------------------------------------------------------
 set(HIK_CODE_READER_SOURCES
     src/code_reader/c_api.cpp
@@ -53,53 +88,13 @@ set(HIK_CODE_READER_SOURCES
     src/code_reader/device_trigger.cpp
 )
 
-# 海康读码器 SDK 在仓库中的 Windows x64 导入/静态库路径（与 CI、发版一致）。
-set(HIK_MVCR_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCodeReader/win64/MvCodeReaderCtrl.lib)
+hik_wrapper_library(hik_code_reader HIK_CR src/code_reader
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCodeReader
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCodeReader/${HIK_SDK_ARCH}/MvCodeReaderCtrl.lib
+    ${HIK_CODE_READER_SOURCES})
 
 # -----------------------------------------------------------------------------
-# 目标 1：静态库 hik_code_reader_static（.lib）
-# -----------------------------------------------------------------------------
-# 给单元测试、其它可执行文件链接用；不会导出 DLL。
-add_library(hik_code_reader STATIC ${HIK_CODE_READER_SOURCES})
-
-# 产物磁盘上的基础名设为 hik_code_reader_static，避免与下面 DLL 同名冲突。
-set_target_properties(hik_code_reader PROPERTIES OUTPUT_NAME hik_code_reader_static)
-
-# include 目录：
-#   PUBLIC  — 链接本库的目标也会自动带上这些头文件路径（如对外 ABI 头 hik_code_reader/）。
-#   PRIVATE — 仅编译本库源文件时使用（MvCodeReader 内部头、实现目录）。
-target_include_directories(hik_code_reader
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCodeReader
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/code_reader
-)
-
-# 链接海康提供的 MvCodeReader 库（Windows 下为 .lib）。
-target_link_libraries(hik_code_reader PRIVATE ${HIK_MVCR_LIB})
-
-# -----------------------------------------------------------------------------
-# 目标 2：共享库 hik_code_reader.dll（Python ctypes / Go cgo 等 FFI）
-# -----------------------------------------------------------------------------
-# 与静态库共用同一套 .cpp，但编译为 DLL，并定义 HIK_CR_COMPILE_DLL 以导出 C API。
-add_library(hik_code_reader_shared SHARED ${HIK_CODE_READER_SOURCES})
-target_compile_definitions(hik_code_reader_shared PRIVATE HIK_CR_COMPILE_DLL)
-target_include_directories(hik_code_reader_shared
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCodeReader
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/code_reader
-)
-target_link_libraries(hik_code_reader_shared PRIVATE ${HIK_MVCR_LIB})
-
-# 输出文件名为 hik_code_reader（Windows 上即 hik_code_reader.dll），与静态库的 hik_code_reader_static 区分，
-# 否则 MSVC 可能把导入库和静态库文件名搞混、互相覆盖。
-set_target_properties(hik_code_reader_shared PROPERTIES OUTPUT_NAME hik_code_reader)
-
-# -----------------------------------------------------------------------------
-# 相机（MvCamera）封装：目标 3/4（静态库 + 共享库，链 MvCameraControl.lib）
+# 相机封装（hik_cv_* C ABI → hik_mvcamera.dll，链 MvCameraControl.lib）
 # -----------------------------------------------------------------------------
 set(HIK_MVCAMERA_SOURCES
     src/mvcamera/c_api.cpp
@@ -109,37 +104,16 @@ set(HIK_MVCAMERA_SOURCES
     src/mvcamera/param.cpp
 )
 
-# 海康相机 SDK 在仓库中的 Windows x64 导入库路径。
-set(HIK_MVCAM_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCamera/win64/MvCameraControl.lib)
-
-add_library(hik_mvcamera STATIC ${HIK_MVCAMERA_SOURCES})
-set_target_properties(hik_mvcamera PROPERTIES OUTPUT_NAME hik_mvcamera_static)
-target_include_directories(hik_mvcamera
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/mvcamera
-)
-target_link_libraries(hik_mvcamera PRIVATE ${HIK_MVCAM_LIB})
-
-add_library(hik_mvcamera_shared SHARED ${HIK_MVCAMERA_SOURCES})
-target_compile_definitions(hik_mvcamera_shared PRIVATE HIK_CV_COMPILE_DLL)
-target_include_directories(hik_mvcamera_shared
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/mvcamera
-)
-target_link_libraries(hik_mvcamera_shared PRIVATE ${HIK_MVCAM_LIB})
-set_target_properties(hik_mvcamera_shared PROPERTIES OUTPUT_NAME hik_mvcamera)
+hik_wrapper_library(hik_mvcamera HIK_CV src/mvcamera
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCamera/${HIK_SDK_ARCH}/MvCameraControl.lib
+    ${HIK_MVCAMERA_SOURCES})
 
 # -----------------------------------------------------------------------------
 # 测试可执行文件 all_tests
 # -----------------------------------------------------------------------------
-# 收集 tests 目录下所有 *_test.cpp；新增测试文件后若 CMake 未自动刷新，可重新 Configure。
-file(GLOB_RECURSE TEST_SOURCES "tests/*_test.cpp")
+# 收集 tests 目录下所有 *_test.cpp；CONFIGURE_DEPENDS 让新增测试文件自动触发重新配置。
+file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "tests/*_test.cpp")
 
 add_executable(all_tests ${TEST_SOURCES})
 target_include_directories(all_tests PRIVATE
