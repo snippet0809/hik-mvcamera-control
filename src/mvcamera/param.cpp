@@ -27,7 +27,15 @@ void setCameraParam(const std::string& sn, const std::string& name, const CamPar
         [&](const auto& v) {
             using T = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<T, int64_t>) {
-                checkSdk(MV_CC_SetIntValueEx(h, name.c_str(), v), ("SetInt(" + name + ")").c_str());
+                // 部分相机节点（如 ExposureTime/Gain）是 Float 类型：用 Int 接口写会报
+                // MV_E_GC_GENERIC(0x80000100)，失败时回退到 Float 接口（两者皆失败时报回 Int 错误）。
+                int r = MV_CC_SetIntValueEx(h, name.c_str(), v);
+                if (r != MV_OK) {
+                    const int r2 = MV_CC_SetFloatValue(h, name.c_str(), static_cast<float>(v));
+                    if (r2 != MV_OK) {
+                        throw std::runtime_error(std::string("SetInt(" + name + ") error: ") + toHexStr(r));
+                    }
+                }
             } else if constexpr (std::is_same_v<T, double>) {
                 checkSdk(MV_CC_SetFloatValue(h, name.c_str(), static_cast<float>(v)),
                          ("SetFloat(" + name + ")").c_str());
