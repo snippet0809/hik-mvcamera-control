@@ -102,6 +102,30 @@ cam.stopDevice(sn);
 （BCR：`(serial, codes[])`；图像：`(serial, frameInfo, buffer)`，`buffer` 为每次新建的 Node Buffer），
 因此回调内可安全使用 Node 主线程 API。`napi_threadsafe_function` 已 `Unref`，回调不阻止进程退出。
 
+### 参数持久性（相机断电/重启）
+
+海康相机的参数（`ExposureTime`、`Gain` 等）是**易失的**：存于相机内存，**断电即恢复出厂默认**。
+`setParam` 的值在**不断电**的前提下跨 `stopDevice`/`startDevice`、跨进程重启都保持；但**相机一断电就丢**。
+
+因此若应用要求相机重启后参数仍为期望值，**每次 `startDevice` 后重新 `setParam` 即可**（实测可用）：
+
+```js
+// 把要恢复的参数封装成一个函数，每次 startDevice 后调用
+function applyParams(sn) {
+  cam.setParam(sn, 'ExposureTime', 6000);
+  cam.setParam(sn, 'Gain', 3);
+  // ... 其它期望值
+}
+
+cam.startDevice(sn, { params: new CameraOpenParams({ trigger_mode: 'Off' }), onFrame });
+applyParams(sn);   // ← 关键：每次启动后重设
+```
+
+注意：
+- `startDevice` 的 `CameraOpenParams` 只在**进入取流那一刻**应用（trigger_mode/trigger_source/net_trans_mode），且**已在取流时会被忽略**；其它参数一律用 `setParam` 单独设置。
+- 若开启了自动曝光/自动增益，相机自身会覆盖手动 `setParam` 的值，属正常行为。
+- 需要"一次保存、每次上电自动恢复"时可考虑相机侧 **UserSet 持久化**（`UserSetSave` 命令节点），但当前包尚未暴露命令节点执行 API（后续可加 `runCommand`）。
+
 ## 全捆绑说明
 
 `npm run bundle`（`scripts/bundle-native.mjs`）会：
