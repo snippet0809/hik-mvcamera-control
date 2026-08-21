@@ -1,0 +1,11 @@
+# npm / node-gyp
+node_modules/
+build/
+prebuilds/
+
+# 捆绑产物（海康与构建输出的 DLL/lib 不入库；只保留占位 .gitkeep）
+_native/*
+!_native/.gitkeep
+
+# 本机 npm 调试
+*.tgz

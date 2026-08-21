@@ -99,6 +99,43 @@ target_link_libraries(hik_code_reader_shared PRIVATE ${HIK_MVCR_LIB})
 set_target_properties(hik_code_reader_shared PROPERTIES OUTPUT_NAME hik_code_reader)
 
 # -----------------------------------------------------------------------------
+# 相机（MvCamera）封装：目标 3/4（静态库 + 共享库，链 MvCameraControl.lib）
+# -----------------------------------------------------------------------------
+set(HIK_MVCAMERA_SOURCES
+    src/mvcamera/c_api.cpp
+    src/mvcamera/device_control.cpp
+    src/mvcamera/device_info.cpp
+    src/mvcamera/image_callback.cpp
+    src/mvcamera/param.cpp
+)
+
+# 海康相机 SDK 在仓库中的 Windows x64 导入库路径。
+set(HIK_MVCAM_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCamera/win64/MvCameraControl.lib)
+
+add_library(hik_mvcamera STATIC ${HIK_MVCAMERA_SOURCES})
+set_target_properties(hik_mvcamera PROPERTIES OUTPUT_NAME hik_mvcamera_static)
+target_include_directories(hik_mvcamera
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mvcamera
+)
+target_link_libraries(hik_mvcamera PRIVATE ${HIK_MVCAM_LIB})
+
+add_library(hik_mvcamera_shared SHARED ${HIK_MVCAMERA_SOURCES})
+target_compile_definitions(hik_mvcamera_shared PRIVATE HIK_CV_COMPILE_DLL)
+target_include_directories(hik_mvcamera_shared
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mvcamera
+)
+target_link_libraries(hik_mvcamera_shared PRIVATE ${HIK_MVCAM_LIB})
+set_target_properties(hik_mvcamera_shared PROPERTIES OUTPUT_NAME hik_mvcamera)
+
+# -----------------------------------------------------------------------------
 # 测试可执行文件 all_tests
 # -----------------------------------------------------------------------------
 # 收集 tests 目录下所有 *_test.cpp；新增测试文件后若 CMake 未自动刷新，可重新 Configure。
@@ -107,10 +144,12 @@ file(GLOB_RECURSE TEST_SOURCES "tests/*_test.cpp")
 add_executable(all_tests ${TEST_SOURCES})
 target_include_directories(all_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/code_reader
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mvcamera
 )
 # 链接：本工程静态库 + GoogleTest（提供 main 与断言宏）。
 target_link_libraries(all_tests PRIVATE
     hik_code_reader
+    hik_mvcamera
     GTest::gtest_main
 )
 
@@ -129,6 +168,7 @@ set(_HIK_CLANGD_ROOT "${CMAKE_SOURCE_DIR}")
 cmake_path(CONVERT "${_HIK_CLANGD_ROOT}" TO_CMAKE_PATH_LIST _HIK_CLANGD_ROOT NORMALIZE)
 string(REPLACE "\\" "/" _HIK_CLANGD_ROOT_JSON "${_HIK_CLANGD_ROOT}")
 set(_HIK_CLANGD_CPP ${HIK_CODE_READER_SOURCES})
+list(APPEND _HIK_CLANGD_CPP ${HIK_MVCAMERA_SOURCES})
 list(APPEND _HIK_CLANGD_CPP ${TEST_SOURCES})
 set(_HIK_CLANGD_JSON "[")
 set(_HIK_CLANGD_SEP "")
@@ -140,7 +180,7 @@ foreach(_HIK_REL IN LISTS _HIK_CLANGD_CPP)
     cmake_path(CONVERT "${_HIK_REL}" TO_CMAKE_PATH_LIST _HIK_REL NORMALIZE)
     string(REPLACE "\\" "/" _HIK_REL_JSON "${_HIK_REL}")
     set(_HIK_FILE "${_HIK_CLANGD_ROOT_JSON}/${_HIK_REL_JSON}")
-    set(_HIK_CMD "clang++ -std=c++17 -Wno-unused-command-line-argument -I${_HIK_CLANGD_ROOT_JSON}/include -I${_HIK_CLANGD_ROOT_JSON}/include/MvCodeReader -I${_HIK_CLANGD_ROOT_JSON}/src/code_reader")
+    set(_HIK_CMD "clang++ -std=c++17 -Wno-unused-command-line-argument -I${_HIK_CLANGD_ROOT_JSON}/include -I${_HIK_CLANGD_ROOT_JSON}/include/MvCodeReader -I${_HIK_CLANGD_ROOT_JSON}/src/code_reader -I${_HIK_CLANGD_ROOT_JSON}/include/MvCamera -I${_HIK_CLANGD_ROOT_JSON}/src/mvcamera")
     # 测试源文件还依赖 FetchContent 的 gtest 头文件，否则 clangd 会报一整串假错误
     if(_HIK_REL_JSON MATCHES "^tests/")
         cmake_path(CONVERT "${googletest_SOURCE_DIR}/googletest/include" TO_CMAKE_PATH_LIST _HIK_GTEST_INC NORMALIZE)

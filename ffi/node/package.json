@@ -1,0 +1,40 @@
+{
+  "name": "hik-code-reader",
+  "version": "0.1.0",
+  "description": "N-API native addon + JS wrapper for Hikrobot code reader (MvCodeReader) C API — Windows x64, bundles Hikvision runtime DLLs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/",
+    "src/",
+    "binding.gyp",
+    "_native/",
+    "prebuilds/",
+    "scripts/",
+    "README.md"
+  ],
+  "scripts": {
+    "install": "node-gyp-build",
+    "build:native": "cmake --build ../build --config Release",
+    "bundle": "node scripts/bundle-native.mjs",
+    "build:addon": "node-gyp rebuild",
+    "prebuild": "prebuildify --napi",
+    "build": "npm run build:native && npm run bundle && npm run build:addon && npm run prebuild",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "node-gyp-build": "^4.8.0"
+  },
+  "devDependencies": {
+    "node-addon-api": "^8.0.0",
+    "node-gyp": "^13.0.1",
+    "prebuildify": "^6.0.0"
+  },
+  "license": "LicenseRef-Proprietary"
+}
