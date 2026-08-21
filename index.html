@@ -313,11 +313,12 @@
 <p><strong>站点生成脚本</strong>的模块关系、环境变量与两种模式说明见 <strong><code>.github/scripts/README.md</code></strong>（与根 README 互补：根文档讲「产品」，该文件讲「Pages 构建脚本怎么拼在一起」）。</p>
 <h2>功能概览（读码器 C++ 封装）</h2>
 <ul>
-<li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号与 GigE 导出 IP 等信息（见 <code>src/code_reader/device_info.cpp</code>）。</li>
+<li><strong>枚举设备</strong>：<code>enumDevice()</code>，返回序列号、GigE 导出 IP 与<strong>设备型号</strong>（<code>modelName</code>，如 <code>MV-IDB005EX</code>=读码器、<code>MV-CU013</code>=相机）等信息（见 <code>src/code_reader/device_info.cpp</code>）。&gt; 注意：海康 GigE 枚举会把同网段<strong>读码器与工业相机</strong>一并列出，靠型号区分。</li>
 <li><strong>运行控制</strong>：<code>startDevice</code> / <code>stopDevice</code>（内部完成打开设备、可选 <code>CodeReaderOpenParams</code>、BCR 回调与起停流等；按序列号操作）。</li>
 <li><strong>读码回调</strong>：通过 <code>startDevice</code> 第三参传入；<code>std::nullopt</code> 保留已有登记，空 <code>std::function</code> 可取消该序列号回调。<strong>软触发</strong>：<code>triggerDevice</code>（仅当设备处于取流 Grabbing）。</li>
-<li><strong>改参 / GenICam</strong>：<code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 含默认值，起流前写入；按需覆盖各成员即可。</li>
+<li><strong>改参 / GenICam</strong>：<code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 含默认值，起流前写入；按需覆盖各成员即可。另提供与相机同构的参数读写 <code>setReaderParam</code> / <code>getReaderParam</code> / <code>runReaderCommand</code>（C ABI：<code>hik_cr_set_param</code> / <code>hik_cr_get_param</code> / <code>hik_cr_set_param_string</code> / <code>hik_cr_get_param_string</code>），可按 GenICam 节点名读写 Int/Float/Bool/Enum/String 并执行命令节点（如 <code>TriggerSoftware</code>）。</li>
 <li><strong>GigE 枚举</strong>：<code>enumDevice</code> / <code>hik_cr_enum_devices</code> 仍返回当前 <strong>导出 IP</strong>（<code>netExportIp</code>）等摘要，便于展示与日志；本库不再提供改 IP 的封装。</li>
+<li><strong>BCR 回调指针生命周期</strong>：<code>hik_cr_start_device</code> 的 BCR 回调传出的 <code>codes</code> 指针指向 SDK 保留到「下次解码」的结果，<strong>在回调返回后仍短暂有效</strong>，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。</li>
 <li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>ffi/go</code></strong>。</li>
 </ul>
 <h2>在 GitHub 上托管分发（维护者）</h2>
