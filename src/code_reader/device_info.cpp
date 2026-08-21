@@ -60,10 +60,12 @@ std::vector<CodeReaderInfo> enumDevice() {
             const auto &gige = pinfo->SpecialInfo.stGigEInfo;
             info.serialNumber = bytesToStr(gige.chSerialNumber, sizeof(gige.chSerialNumber));
             info.netExportIp = intToIp(gige.nNetExport);
+            info.modelName = bytesToStr(gige.chModelName, sizeof(gige.chModelName));
         } else if (pinfo->nTLayerType == MV_CODEREADER_USB_DEVICE) {
             const auto &usb = pinfo->SpecialInfo.stUsb3VInfo;
             info.serialNumber = bytesToStr(usb.chSerialNumber, sizeof(usb.chSerialNumber));
             info.netExportIp.clear();  // USB 读码器无 IP
+            info.modelName = bytesToStr(usb.chModelName, sizeof(usb.chModelName));
         } else {
             continue;
         }

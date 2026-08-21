@@ -44,11 +44,12 @@ flowchart TB
 
 ## 功能概览（读码器 C++ 封装）
 
-- **枚举设备**：`enumDevice()`，返回序列号与 GigE 导出 IP 等信息（见 `src/code_reader/device_info.cpp`）。
+- **枚举设备**：`enumDevice()`，返回序列号、GigE 导出 IP 与**设备型号**（`modelName`，如 `MV-IDB005EX`=读码器、`MV-CU013`=相机）等信息（见 `src/code_reader/device_info.cpp`）。> 注意：海康 GigE 枚举会把同网段**读码器与工业相机**一并列出，靠型号区分。
 - **运行控制**：`startDevice` / `stopDevice`（内部完成打开设备、可选 `CodeReaderOpenParams`、BCR 回调与起停流等；按序列号操作）。
 - **读码回调**：通过 `startDevice` 第三参传入；`std::nullopt` 保留已有登记，空 `std::function` 可取消该序列号回调。**软触发**：`triggerDevice`（仅当设备处于取流 Grabbing）。
-- **改参 / GenICam**：`startDevice` 第二参 `CodeReaderOpenParams` 含默认值，起流前写入；按需覆盖各成员即可。
+- **改参 / GenICam**：`startDevice` 第二参 `CodeReaderOpenParams` 含默认值，起流前写入；按需覆盖各成员即可。另提供与相机同构的参数读写 `setReaderParam` / `getReaderParam` / `runReaderCommand`（C ABI：`hik_cr_set_param` / `hik_cr_get_param` / `hik_cr_set_param_string` / `hik_cr_get_param_string`），可按 GenICam 节点名读写 Int/Float/Bool/Enum/String 并执行命令节点（如 `TriggerSoftware`）。
 - **GigE 枚举**：`enumDevice` / `hik_cr_enum_devices` 仍返回当前 **导出 IP**（`netExportIp`）等摘要，便于展示与日志；本库不再提供改 IP 的封装。
+- **BCR 回调指针生命周期**：`hik_cr_start_device` 的 BCR 回调传出的 `codes` 指针指向 SDK 保留到「下次解码」的结果，**在回调返回后仍短暂有效**，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。
 - **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`ffi/go`**。
 
 ## 在 GitHub 上托管分发（维护者）

@@ -58,6 +58,7 @@ func check(r C.HikCrResult) error {
 type DeviceInfo struct {
 	SerialNumber string
 	NetExportIP  string
+	ModelName    string // 设备型号（MV-IDB*=读码器、MV-CU*=相机），用于区分读码器/相机
 }
 
 func EnumDevices() ([]DeviceInfo, error) {
@@ -76,6 +77,7 @@ func EnumDevices() ([]DeviceInfo, error) {
 		out = append(out, DeviceInfo{
 			SerialNumber: C.GoString((*C.char)(unsafe.Pointer(&d.serial_number[0]))),
 			NetExportIP:  C.GoString((*C.char)(unsafe.Pointer(&d.net_export_ip[0]))),
+			ModelName:    C.GoString((*C.char)(unsafe.Pointer(&d.model_name[0]))),
 		})
 	}
 	return out, nil
@@ -157,6 +159,103 @@ func TriggerDevice(serial string) error {
 	cs := C.CString(serial)
 	defer C.free(unsafe.Pointer(cs))
 	return check(C.hik_cr_trigger_device(cs))
+}
+
+// ParamKind 对应 HikCrParamType；ParamCommand 表示命令节点（无值）。
+type ParamKind int
+
+const (
+	ParamInt     ParamKind = C.HIK_CR_PARAM_INT
+	ParamFloat   ParamKind = C.HIK_CR_PARAM_FLOAT
+	ParamBool    ParamKind = C.HIK_CR_PARAM_BOOL
+	ParamEnum    ParamKind = C.HIK_CR_PARAM_ENUM
+	ParamString  ParamKind = C.HIK_CR_PARAM_STRING
+	ParamCommand ParamKind = C.HIK_CR_PARAM_COMMAND
+)
+
+// SetParam 写数值/枚举/命令参数；kind 为 ParamInt/ParamFloat/ParamBool/ParamEnum 时 value 对应
+// int64/float64/bool/uint32；ParamCommand 忽略 value。设备须已 StartDevice。
+func SetParam(serial, name string, kind ParamKind, value any) error {
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	var cv C.HikCrParamValue
+	switch kind {
+	case ParamInt:
+		cv.type = C.HIK_CR_PARAM_INT
+		cv.i = C.int64_t(value.(int64))
+	case ParamFloat:
+		cv.type = C.HIK_CR_PARAM_FLOAT
+		cv.f = C.double(value.(float64))
+	case ParamBool:
+		cv.type = C.HIK_CR_PARAM_BOOL
+		if value.(bool) {
+			cv.b = 1
+		}
+	case ParamEnum:
+		cv.type = C.HIK_CR_PARAM_ENUM
+		cv.e = C.uint32_t(value.(uint32))
+	case ParamCommand:
+		cv.type = C.HIK_CR_PARAM_COMMAND
+	default:
+		return fmt.Errorf("SetParam: invalid kind %d", kind)
+	}
+	return check(C.hik_cr_set_param(cs, cn, &cv))
+}
+
+// SetParamString 写字符串参数（含枚举 symbolic 值）；设备须已 StartDevice。
+func SetParamString(serial, name, value string) error {
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	cv := C.CString(value)
+	defer C.free(unsafe.Pointer(cv))
+	return check(C.hik_cr_set_param_string(cs, cn, cv))
+}
+
+// GetParam 读数值/枚举参数，返回其类型与值；字符串节点请用 GetParamString。
+func GetParam(serial, name string) (kind ParamKind, value any, err error) {
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	var cv C.HikCrParamValue
+	if err := check(C.hik_cr_get_param(cs, cn, &cv)); err != nil {
+		return 0, nil, err
+	}
+	switch cv.type {
+	case C.HIK_CR_PARAM_INT:
+		return ParamInt, int64(cv.i), nil
+	case C.HIK_CR_PARAM_FLOAT:
+		return ParamFloat, float64(cv.f), nil
+	case C.HIK_CR_PARAM_BOOL:
+		return ParamBool, cv.b != 0, nil
+	case C.HIK_CR_PARAM_ENUM:
+		return ParamEnum, uint32(cv.e), nil
+	default:
+		return ParamString, "", fmt.Errorf("GetParam: string 节点请用 GetParamString")
+	}
+}
+
+// GetParamString 读字符串参数。
+func GetParamString(serial, name string) (string, error) {
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	buf := make([]byte, 256)
+	if err := check(C.hik_cr_get_param_string(cs, cn, (*C.char)(unsafe.Pointer(&buf[0])), C.size_t(len(buf)))); err != nil {
+		return "", err
+	}
+	for i, b := range buf {
+		if b == 0 {
+			buf = buf[:i]
+			break
+		}
+	}
+	return string(buf), nil
 }
 
 //export hikcrGoBcrShim

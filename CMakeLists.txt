@@ -86,6 +86,7 @@ set(HIK_CODE_READER_SOURCES
     src/code_reader/device_control.cpp
     src/code_reader/device_info.cpp
     src/code_reader/device_trigger.cpp
+    src/code_reader/param.cpp
 )
 
 hik_wrapper_library(hik_code_reader HIK_CR src/code_reader

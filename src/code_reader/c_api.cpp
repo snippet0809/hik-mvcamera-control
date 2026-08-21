@@ -2,12 +2,18 @@
 
 #include "hik_code_reader/c_api.h"
 #include "code_reader.h"
+#include "code_reader_detail.h"
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -55,6 +61,16 @@ CodeReaderOpenParams cppOpenParams(const HikCrOpenParams *c) {
     return p;
 }
 
+// 最近一次 BCR 解码结果（按序列号保留）。修复：回调传出的 codes 指针原先指向 C++ lambda
+// 栈上临时 vector，返回后即失效；FFI 若把回调排到其他线程/事件循环延迟消费（如 koffi →
+// JS 主线程、ctypes 异步），就会 use-after-free。这里把结果常驻到下次解码前，保证指针
+// 在回调期间及其后一段窗口内仍可安全读取。
+struct KeptBcr {
+    std::vector<std::string> strings;
+    std::vector<const char *> ptrs;
+};
+std::unordered_map<std::string, std::shared_ptr<KeptBcr>> g_last_bcr;
+
 std::optional<CodeReaderBcrCallback> cppBcr(int action, HikCrBcrCallback cb, void *user, const std::string &sn) {
     if (action == HIK_CR_BCR_KEEP) {
         return std::nullopt;
@@ -69,12 +85,17 @@ std::optional<CodeReaderBcrCallback> cppBcr(int action, HikCrBcrCallback cb, voi
         throw std::invalid_argument("bcr_action=HIK_CR_BCR_SET requires non-null bcr_cb");
     }
     return CodeReaderBcrCallback([cb, user, sn](std::vector<std::string> codeArr) {
-        std::vector<const char *> ptrs;
-        ptrs.reserve(codeArr.size());
-        for (const auto &s : codeArr) {
-            ptrs.push_back(s.c_str());
+        auto kept = std::make_shared<KeptBcr>();
+        kept->strings = std::move(codeArr);
+        kept->ptrs.reserve(kept->strings.size());
+        for (const auto &s : kept->strings) {
+            kept->ptrs.push_back(s.c_str());
         }
-        cb(sn.c_str(), ptrs.data(), static_cast<int>(ptrs.size()), user);
+        {
+            std::lock_guard<std::mutex> lock(g_device_mutex);
+            g_last_bcr[sn] = kept;
+        }
+        cb(sn.c_str(), kept->ptrs.data(), static_cast<int>(kept->ptrs.size()), user);
     });
 }
 
@@ -122,7 +143,8 @@ HIK_CR_API HikCrResult hik_cr_enum_devices(HikCrDeviceInfo **out_list, int *out_
         auto *arr = new HikCrDeviceInfo[devs.size()];
         for (size_t i = 0; i < devs.size(); ++i) {
             if (!copyTo(arr[i].serial_number, sizeof(arr[i].serial_number), devs[i].serialNumber) ||
-                !copyTo(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp)) {
+                !copyTo(arr[i].net_export_ip, sizeof(arr[i].net_export_ip), devs[i].netExportIp) ||
+                !copyTo(arr[i].model_name, sizeof(arr[i].model_name), devs[i].modelName)) {
                 delete[] arr;
                 // copyTo 已把具体原因写入 g_err，保留精确错误而非通用文案
                 throw std::runtime_error("hik_cr_enum_devices copy: " + g_err);
@@ -168,6 +190,87 @@ HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { triggerDevice(serial_utf8); });
+}
+
+HIK_CR_API HikCrResult hik_cr_set_param(const char *serial_utf8, const char *name,
+                                        const HikCrParamValue *value) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !nonNull(name, "name") || !value) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const std::string sn(serial_utf8);
+        switch (value->type) {
+            case HIK_CR_PARAM_INT:
+                setReaderParam(sn, name, static_cast<int64_t>(value->i));
+                break;
+            case HIK_CR_PARAM_FLOAT:
+                setReaderParam(sn, name, static_cast<double>(value->f));
+                break;
+            case HIK_CR_PARAM_BOOL:
+                setReaderParam(sn, name, value->b != 0);
+                break;
+            case HIK_CR_PARAM_ENUM:
+                setReaderParam(sn, name, static_cast<uint32_t>(value->e));
+                break;
+            case HIK_CR_PARAM_COMMAND:
+                runReaderCommand(sn, name);
+                break;
+            default:
+                throw std::invalid_argument("invalid param type");
+        }
+    });
+}
+
+HIK_CR_API HikCrResult hik_cr_set_param_string(const char *serial_utf8, const char *name,
+                                               const char *value) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !nonNull(name, "name") || !nonNull(value, "value")) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] { setReaderParam(serial_utf8, name, std::string(value)); });
+}
+
+HIK_CR_API HikCrResult hik_cr_get_param(const char *serial_utf8, const char *name,
+                                        HikCrParamValue *out_value) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !nonNull(name, "name") || !out_value) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const CodeReaderParamValue v = getReaderParam(serial_utf8, name);
+        std::visit([&](const auto &val) {
+            using T = std::decay_t<decltype(val)>;
+            if constexpr (std::is_same_v<T, int64_t>) {
+                out_value->type = HIK_CR_PARAM_INT;
+                out_value->i = val;
+            } else if constexpr (std::is_same_v<T, double>) {
+                out_value->type = HIK_CR_PARAM_FLOAT;
+                out_value->f = val;
+            } else if constexpr (std::is_same_v<T, bool>) {
+                out_value->type = HIK_CR_PARAM_BOOL;
+                out_value->b = val ? 1 : 0;
+            } else if constexpr (std::is_same_v<T, uint32_t>) {
+                out_value->type = HIK_CR_PARAM_ENUM;
+                out_value->e = val;
+            } else {
+                throw std::logic_error("get_param: string 节点请用 hik_cr_get_param_string");
+            }
+        }, v);
+    });
+}
+
+HIK_CR_API HikCrResult hik_cr_get_param_string(const char *serial_utf8, const char *name, char *out_utf8,
+                                               size_t buf_size) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !nonNull(name, "name") || !out_utf8 || !buf_size) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const CodeReaderParamValue v = getReaderParam(serial_utf8, name);
+        if (!std::holds_alternative<std::string>(v)) {
+            throw std::logic_error("get_param_string: 节点非字符串类型，请用 hik_cr_get_param");
+        }
+        if (!copyTo(out_utf8, buf_size, std::get<std::string>(v))) {
+            throw std::runtime_error("hik_cr_get_param_string copy");
+        }
+    });
 }
 
 HIK_CR_API size_t hik_cr_last_error_copy(char *out_utf8, size_t buf_size) {
