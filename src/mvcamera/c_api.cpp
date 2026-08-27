@@ -49,6 +49,8 @@ CameraOpenParams cppCameraOpenParams(const HikCvOpenParams* c) {
         p.triggerSource = c->trigger_source;
     }
     p.netTransMode = c->net_trans_mode;
+    p.width = c->width;
+    p.height = c->height;
     return p;
 }
 

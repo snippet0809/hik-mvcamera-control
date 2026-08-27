@@ -15,11 +15,13 @@ struct CameraInfo {
     std::string modelName;    // 设备型号（GigE：chModelName；USB：chModelName）
 };
 
-/** startCamera 第二参：起流前写入 TriggerMode / TriggerSource；空串表示不修改。 */
+/** startCamera 第二参：起流前写入 TriggerMode / TriggerSource / Width / Height；空串/0 表示不修改。 */
 struct CameraOpenParams {
     std::string triggerMode{"Off"};      // On / Off
     std::string triggerSource{"Software"};  // 软触发源
     int netTransMode{0};                 // 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
+    int width{0};                        // >0 时起流前写 Width
+    int height{0};                       // >0 时起流前写 Height（线阵相机：每帧行数）
 };
 
 /** 单帧元数据（不含图像数据；数据经回调的 data/len 传递）。 */

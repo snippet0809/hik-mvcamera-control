@@ -27,6 +27,12 @@ void applyOpenParams(CameraDevice* d, const CameraOpenParams& p) {
         checkSdk<MV_OK>(MV_CC_SetEnumValueByString(h, "TriggerSource", p.triggerSource.c_str()),
                  "SetEnum(TriggerSource)");
     }
+    if (p.width > 0) {
+        checkSdk<MV_OK>(MV_CC_SetIntValue(h, "Width", p.width), "SetInt(Width)");
+    }
+    if (p.height > 0) {
+        checkSdk<MV_OK>(MV_CC_SetIntValue(h, "Height", p.height), "SetInt(Height)");
+    }
 }
 
 } // namespace

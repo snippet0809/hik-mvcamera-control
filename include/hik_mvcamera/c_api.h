@@ -69,6 +69,8 @@ typedef struct HikCvOpenParams {
     const char* trigger_mode;
     const char* trigger_source;
     int net_trans_mode;  // 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
+    int width;           // >0 时起流前写 Width
+    int height;          // >0 时起流前写 Height（线阵相机：每帧行数）
 } HikCvOpenParams;
 
 typedef enum HikCvParamType {
