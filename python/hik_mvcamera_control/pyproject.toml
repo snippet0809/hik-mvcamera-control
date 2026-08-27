@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hik-mvcamera-control"
+version = "0.2.0"
+description = "ctypes bindings for Hikrobot MVS camera (MvCamera) + code reader (MvCodeReader) C API — Windows x64 wheel ships native DLLs"
+readme = "README.md"
+requires-python = ">=3.10"
+# SPDX 表达式（setuptools 弃用 table 形式 license）；具体说明见仓库 README / 海康 SDK 许可。
+license = "LicenseRef-Proprietary"
+authors = [{ name = "hik-mvcamera-control contributors" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+[project.urls]
+Homepage = "https://github.com/snippet0809/hik-mvcamera-control"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hik_mvcamera_control*"]
+
+[tool.setuptools.package-data]
+# DLL：运行时；*.lib：海康读码器/相机 SDK 导入库，便于在本机链其它原生代码；许可以海康为准。
+hik_mvcamera_control = ["_native/*.dll", "_native/*.lib", "_native/.gitkeep"]
