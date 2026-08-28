@@ -8,11 +8,7 @@
 namespace {
 
 void openIfConnected(CameraDevice* d) {
-    if (d->status != CameraStatus::Connected) {
-        return;
-    }
-    checkSdk<MV_OK>(MV_CC_OpenDevice(d->handle, MV_ACCESS_Exclusive, 0), "MV_CC_OpenDevice");
-    d->status = CameraStatus::Open;
+    d->open();
 }
 
 void applyOpenParams(CameraDevice* d, const CameraOpenParams& p) {
@@ -44,7 +40,41 @@ void CameraDevice::open() {
     if (status == CameraStatus::Grabbing) {
         throw std::logic_error("CameraDevice::open: Grabbing 下请先 stopCamera");
     }
-    openIfConnected(this);
+    // 关键：枚举 + CreateHandle + OpenDevice 必须在同一作用域。MVS 句柄引用枚举结果缓冲区，
+    // 枚举作用域结束后再 OpenDevice 会报 0x80000206 网络错误。
+    MV_CC_DEVICE_INFO_LIST list{};
+    checkSdk<MV_OK>(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
+    const MV_CC_DEVICE_INFO* devInfo = nullptr;
+    for (unsigned i = 0; i < list.nDeviceNum; ++i) {
+        const MV_CC_DEVICE_INFO* p = list.pDeviceInfo[i];
+        if (!p) {
+            continue;
+        }
+        std::string sn;
+        if (p->nTLayerType == MV_GIGE_DEVICE) {
+            sn = bytesToStr(p->SpecialInfo.stGigEInfo.chSerialNumber,
+                            sizeof(p->SpecialInfo.stGigEInfo.chSerialNumber));
+        } else if (p->nTLayerType == MV_USB_DEVICE) {
+            sn = bytesToStr(p->SpecialInfo.stUsb3VInfo.chSerialNumber,
+                            sizeof(p->SpecialInfo.stUsb3VInfo.chSerialNumber));
+        } else {
+            continue;
+        }
+        if (sn == serialNumber) {
+            devInfo = p;
+            break;
+        }
+    }
+    if (!devInfo) {
+        throw std::runtime_error("camera not found by serial: " + serialNumber);
+    }
+    if (handle) {
+        MV_CC_DestroyHandle(handle);
+        handle = nullptr;
+    }
+    checkSdk<MV_OK>(MV_CC_CreateHandle(&handle, devInfo), "MV_CC_CreateHandle");
+    checkSdk<MV_OK>(MV_CC_OpenDevice(handle, MV_ACCESS_Exclusive, 0), "MV_CC_OpenDevice");
+    status = CameraStatus::Open;
 }
 
 void CameraDevice::grabbing() {
@@ -71,6 +101,10 @@ void CameraDevice::close() {
         checkSdk<MV_OK>(MV_CC_CloseDevice(handle), "MV_CC_CloseDevice");
         status = CameraStatus::Connected;
     }
+    if (handle) {
+        MV_CC_DestroyHandle(handle);
+        handle = nullptr;
+    }
 }
 
 void stopCamera(const std::string& sn) {
@@ -93,11 +127,11 @@ void startCamera(const std::string& sn, const CameraOpenParams& params,
         return;
     }
     if (cam->status == CameraStatus::Connected) {
+        cam->open();  // open() 内创建句柄（与枚举同作用域）
         if (params.netTransMode != 0) {
             checkSdk<MV_OK>(MV_GIGE_SetNetTransMode(cam->handle, static_cast<unsigned int>(params.netTransMode)),
                      "MV_GIGE_SetNetTransMode");
         }
-        cam->open();
     }
     applyOpenParams(cam, params);
     cam->grabbing();

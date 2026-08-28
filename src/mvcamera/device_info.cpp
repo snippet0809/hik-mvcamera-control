@@ -50,12 +50,10 @@ const MV_CC_DEVICE_INFO* findDeviceInfoBySerial(const std::string& serial) {
 
 CameraDevice::CameraDevice(const std::string& serialNumber)
     : serialNumber(serialNumber), handle(nullptr), status(CameraStatus::Connected) {
-    // 相机 SDK 无「按序列号建 handle」：须先枚举拿到 MV_CC_DEVICE_INFO* 再 CreateHandle
-    const MV_CC_DEVICE_INFO* devInfo = findDeviceInfoBySerial(serialNumber);
-    if (!devInfo) {
+    // 仅校验设备在线；句柄在 open() 内与枚举同作用域创建（避免 MVS 悬垂引用导致 OpenDevice 0x80000206）
+    if (!findDeviceInfoBySerial(serialNumber)) {
         throw std::runtime_error("camera not found by serial: " + serialNumber);
     }
-    checkSdk<MV_OK>(MV_CC_CreateHandle(&handle, devInfo), "MV_CC_CreateHandle");
 }
 
 CameraDevice::~CameraDevice() {
@@ -66,8 +64,10 @@ CameraDevice::~CameraDevice() {
         close();
     } catch (...) {
     }
-    MV_CC_DestroyHandle(handle);
-    handle = nullptr;
+    if (handle) {
+        MV_CC_DestroyHandle(handle);
+        handle = nullptr;
+    }
 }
 
 std::vector<CameraInfo> enumCamera() {
@@ -102,7 +102,30 @@ std::vector<CameraInfo> enumCamera() {
 
 void forceCameraIp(const std::string& sn, const std::string& ip, const std::string& subnetMask,
                    const std::string& gateway) {
-    const MV_CC_DEVICE_INFO* devInfo = findDeviceInfoBySerial(sn);
+    // 枚举 + CreateHandle 同作用域（findDeviceInfoBySerial 返回的指针随局部 list 失效，不可跨作用域 CreateHandle）
+    MV_CC_DEVICE_INFO_LIST list{};
+    checkSdk<MV_OK>(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
+    const MV_CC_DEVICE_INFO* devInfo = nullptr;
+    for (unsigned i = 0; i < list.nDeviceNum; ++i) {
+        const MV_CC_DEVICE_INFO* p = list.pDeviceInfo[i];
+        if (!p) {
+            continue;
+        }
+        std::string s;
+        if (p->nTLayerType == MV_GIGE_DEVICE) {
+            s = bytesToStr(p->SpecialInfo.stGigEInfo.chSerialNumber,
+                           sizeof(p->SpecialInfo.stGigEInfo.chSerialNumber));
+        } else if (p->nTLayerType == MV_USB_DEVICE) {
+            s = bytesToStr(p->SpecialInfo.stUsb3VInfo.chSerialNumber,
+                           sizeof(p->SpecialInfo.stUsb3VInfo.chSerialNumber));
+        } else {
+            continue;
+        }
+        if (s == sn) {
+            devInfo = p;
+            break;
+        }
+    }
     if (!devInfo) {
         throw std::runtime_error("camera not found by serial: " + sn);
     }
