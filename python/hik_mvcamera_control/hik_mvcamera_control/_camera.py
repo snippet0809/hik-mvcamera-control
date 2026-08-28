@@ -117,7 +117,9 @@ class HikCvOpenParams(Structure):
     _fields_ = [
         ("trigger_mode", c_char_p),
         ("trigger_source", c_char_p),
-        ("net_trans_mode", c_int),
+        ("net_trans_mode", c_int),  # 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
+        ("width", c_int),   # >0 时起流前写 Width
+        ("height", c_int),  # >0 时起流前写 Height（线阵相机：每帧行数）
     ]
 
 

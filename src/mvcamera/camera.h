@@ -17,8 +17,8 @@ struct CameraInfo {
 
 /** startCamera 第二参：起流前写入 TriggerMode / TriggerSource / Width / Height；空串/0 表示不修改。 */
 struct CameraOpenParams {
-    std::string triggerMode{"Off"};      // On / Off
-    std::string triggerSource{"Software"};  // 软触发源
+    std::string triggerMode{};           // 空串=起流不写（保持相机持久化配置）; "On"/"Off" 时起流前写
+    std::string triggerSource{};         // 空串=起流不写; 符号名（如 "Software"）时起流前写
     int netTransMode{0};                 // 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
     int width{0};                        // >0 时起流前写 Width
     int height{0};                       // >0 时起流前写 Height（线阵相机：每帧行数）
