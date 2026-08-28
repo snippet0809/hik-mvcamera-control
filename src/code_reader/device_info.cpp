@@ -59,7 +59,8 @@ std::vector<CodeReaderInfo> enumDevice() {
         if (pinfo->nTLayerType == MV_CODEREADER_GIGE_DEVICE) {
             const auto &gige = pinfo->SpecialInfo.stGigEInfo;
             info.serialNumber = bytesToStr(gige.chSerialNumber, sizeof(gige.chSerialNumber));
-            info.netExportIp = intToIp(gige.nNetExport);
+            // 用 nCurrentIp（设备自身 IP）而非 nNetExport（对端主机/导出 IP），与相机枚举一致
+            info.netExportIp = intToIp(gige.nCurrentIp);
             info.modelName = bytesToStr(gige.chModelName, sizeof(gige.chModelName));
         } else if (pinfo->nTLayerType == MV_CODEREADER_USB_DEVICE) {
             const auto &usb = pinfo->SpecialInfo.stUsb3VInfo;

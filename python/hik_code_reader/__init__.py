@@ -55,6 +55,7 @@ __all__ = [
 
 HIK_CR_SERIAL_MAX = 256
 HIK_CR_IPV4_STR_MAX = 64
+HIK_CR_MODEL_MAX = 64
 
 HIK_CR_OK = 0
 HIK_CR_ERR_UNKNOWN = 1
@@ -93,6 +94,7 @@ class HikCrDeviceInfo(Structure):
     _fields_ = [
         ("serial_number", ctypes.c_char * HIK_CR_SERIAL_MAX),
         ("net_export_ip", ctypes.c_char * HIK_CR_IPV4_STR_MAX),
+        ("model_name", ctypes.c_char * HIK_CR_MODEL_MAX),
     ]
 
 
@@ -462,18 +464,20 @@ class HikCodeReader:
         if code != HIK_CR_OK:
             raise OSError(code, self.last_error())
 
-    def enum_devices(self) -> list[tuple[str, str]]:
+    def enum_devices(self) -> list[tuple[str, str, str]]:
+        """枚举在线读码器，返回 (序列号, GigE 导出 IP, 型号)。"""
         arr = POINTER(HikCrDeviceInfo)()
         n = c_int(0)
         self.check(self._lib.hik_cr_enum_devices(ctypes.byref(arr), ctypes.byref(n)))
         try:
-            out: list[tuple[str, str]] = []
+            out: list[tuple[str, str, str]] = []
             for i in range(n.value):
                 d = arr[i]
                 out.append(
                     (
                         d.serial_number.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
                         d.net_export_ip.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
+                        d.model_name.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
                     )
                 )
             return out
