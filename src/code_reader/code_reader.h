@@ -25,6 +25,16 @@ struct CodeReaderOpenParams {
 
 using CodeReaderBcrCallback = std::function<void(std::vector<std::string>)>;
 
+/** 读码成功帧的元数据（SDK IMAGE_OUT_INFO 的 width/height/pixelType/frameLen/frameNum）。 */
+struct CodeReaderFrameInfo {
+    unsigned int width;
+    unsigned int height;
+    unsigned int pixelType;  // MvCodeReaderGvspPixelType，数值与相机 MvGvspPixelType 一致
+    unsigned int frameLen;
+    unsigned int frameNum;
+};
+using CodeReaderFrameCallback = std::function<void(const CodeReaderFrameInfo &, const unsigned char *, size_t)>;
+
 /** 参数值：Int / Float / Bool / Enum(字符串 symbolic 值走 SetEnumValueByString)。 */
 using CodeReaderParamValue = std::variant<int64_t, double, bool, uint32_t, std::string>;
 

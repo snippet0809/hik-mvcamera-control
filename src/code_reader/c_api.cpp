@@ -99,6 +99,32 @@ std::optional<CodeReaderBcrCallback> cppBcr(int action, HikCrBcrCallback cb, voi
     });
 }
 
+std::optional<CodeReaderFrameCallback> cppFrame(int action, HikCrFrameCallback cb, void *user,
+                                                const std::string &sn) {
+    if (action == HIK_CR_FRAME_KEEP) {
+        return std::nullopt;
+    }
+    if (action == HIK_CR_FRAME_CLEAR) {
+        return CodeReaderFrameCallback{};
+    }
+    if (action != HIK_CR_FRAME_SET) {
+        throw std::invalid_argument("invalid frame_action");
+    }
+    if (!cb) {
+        throw std::invalid_argument("frame_action=HIK_CR_FRAME_SET requires non-null frame_cb");
+    }
+    return CodeReaderFrameCallback([cb, user, sn](const CodeReaderFrameInfo &fi, const unsigned char *data,
+                                                  size_t len) {
+        HikCrFrameInfo cfi;
+        cfi.width = fi.width;
+        cfi.height = fi.height;
+        cfi.pixel_type = fi.pixelType;
+        cfi.frame_len = fi.frameLen;
+        cfi.frame_num = fi.frameNum;
+        cb(sn.c_str(), &cfi, data, len, user);
+    });
+}
+
 template <typename F>
 HikCrResult wrap(F &&f) {
     try {
@@ -190,6 +216,30 @@ HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {
         return HIK_CR_ERR_INVALID_ARG;
     }
     return wrap([&] { triggerDevice(serial_utf8); });
+}
+
+HIK_CR_API HikCrResult hik_cr_set_frame_callback(const char *serial_utf8, int frame_action,
+                                                 HikCrFrameCallback frame_cb, void *frame_user_data) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    if (frame_action != HIK_CR_FRAME_KEEP && frame_action != HIK_CR_FRAME_SET && frame_action != HIK_CR_FRAME_CLEAR) {
+        err("frame_action must be HIK_CR_FRAME_KEEP, HIK_CR_FRAME_SET, or HIK_CR_FRAME_CLEAR");
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    if (frame_action == HIK_CR_FRAME_SET && !frame_cb) {
+        err("HIK_CR_FRAME_SET requires non-null frame_cb");
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const std::string sn(serial_utf8);
+        auto frame = cppFrame(frame_action, frame_cb, frame_user_data, sn);
+        std::lock_guard<std::mutex> lock(g_device_mutex);
+        if (frame) {
+            registerFrameCallbackForSerial(sn, *frame);
+        }
+        // KEEP（nullopt）不改变登记。
+    });
 }
 
 HIK_CR_API HikCrResult hik_cr_set_param(const char *serial_utf8, const char *name,

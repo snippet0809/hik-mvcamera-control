@@ -13,10 +13,10 @@
 enum class CodeReaderStatus { Connected, Open, Grabbing };
 
 /**
- * 全局互斥锁：保护 deviceMap / g_bcr 及句柄状态迁移。
+ * 全局互斥锁：保护 deviceMap / g_bcr / g_frames 及句柄状态迁移。
  * startDevice / stopDevice / triggerDevice / imageBridge 在各自入口加锁；
  * findDevice / getOrCreateDevice / CodeReader::open/grabbing/close / recreateHandle /
- * registerImageCallbackForSerial 等内部函数约定「调用方已持有本锁」。
+ * registerImageCallbackForSerial / registerFrameCallbackForSerial 等内部函数约定「调用方已持有本锁」。
  */
 extern std::mutex g_device_mutex;
 
@@ -42,3 +42,4 @@ CodeReader *getOrCreateDevice(const std::string &sn);
 
 void codeReaderInternalBindImageCallbackBeforeGrabbing(CodeReader *device);
 void registerImageCallbackForSerial(const std::string &sn, const CodeReaderBcrCallback &callback);
+void registerFrameCallbackForSerial(const std::string &sn, const CodeReaderFrameCallback &callback);
