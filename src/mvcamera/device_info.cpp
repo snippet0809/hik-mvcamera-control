@@ -6,10 +6,17 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <unordered_map>
 
 std::unordered_map<std::string, std::shared_ptr<CameraDevice>> cameraMap;
+
+// cameraMap 的并发保护：多条通道（Go 侧同一并行组内并发 StartDevice）会同时起流不同相机，
+// 裸 map 并发 emplace 触发 rehash 即 UB（崩溃/表损坏），故所有访问均须持锁。
+// 只保护 map 本身，MV_CC_OpenDevice / MV_CC_StartGrabbing 等慢操作在锁外进行，保证不同相机真正并行。
+// 不变量：cameraMap 只增不删（无任何 erase），故 findCamera 返回的裸指针在进程生命周期内始终有效。
+std::mutex g_cameraMapMutex;
 
 namespace {
 
@@ -142,14 +149,22 @@ void forceCameraIp(const std::string& sn, const std::string& ip, const std::stri
 }
 
 CameraDevice* findCamera(const std::string& sn) {
+    std::lock_guard<std::mutex> lock(g_cameraMapMutex);
     const auto it = cameraMap.find(sn);
     return it == cameraMap.end() ? nullptr : it->second.get();
 }
 
 CameraDevice* getOrCreateCamera(const std::string& sn) {
-    const auto it = cameraMap.find(sn);
-    if (it != cameraMap.end()) {
-        return it->second.get();
+    {
+        std::lock_guard<std::mutex> lock(g_cameraMapMutex);
+        const auto it = cameraMap.find(sn);
+        if (it != cameraMap.end()) {
+            return it->second.get();
+        }
     }
-    return cameraMap.emplace(sn, std::make_shared<CameraDevice>(sn)).first->second.get();
+    // 构造内部要 MV_CC_EnumDevices（较慢），放在锁外：持锁构造会把多台相机的起流重新串行化。
+    // 并发插入同一序列号时可能多构造一个探测对象随即丢弃（emplace 遇已存在键不覆盖），无副作用。
+    auto created = std::make_shared<CameraDevice>(sn);
+    std::lock_guard<std::mutex> lock(g_cameraMapMutex);
+    return cameraMap.emplace(sn, std::move(created)).first->second.get();
 }
