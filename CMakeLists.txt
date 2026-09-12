@@ -20,6 +20,30 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # -----------------------------------------------------------------------------
+# MinGW（gcc）：必须定义 WIN32，否则海康结构体布局错位
+# -----------------------------------------------------------------------------
+# 海康的 PixelType.h 里有：
+#     #ifdef WIN32
+#         PixelType_Gvsp_Undefined = 0xFFFFFFFF   // 全非负 -> GCC 选 4 字节 unsigned int
+#     #else
+#         PixelType_Gvsp_Undefined = -1           // 有负数，且另有 0x81200001 > INT_MAX
+#     #endif                                      //   -> GCC 只能选 8 字节 long long
+# MSVC 无论取值如何一律把枚举当 4 字节 int（甚至静默截断 0x81200001），而 MSVC 会定义
+# WIN32；MinGW 只定义 _WIN32、不定义 WIN32，于是走 #else 分支，enum 变成 8 字节，
+# 使 MV_FRAME_OUT_INFO_EX 之后所有字段偏移整体错位。
+#
+# 后果是**静默的数据损坏**而非编译错误：实测 len=0、frameNum 为垃圾值，
+# 而 width/height 恰好还对（它们在结构体开头，偏移未受影响）。
+# -fshort-enums 无效（值确实超出 32 位有符号）；加 -DWIN32 后偏移与 MSVC 逐项一致。
+# 配套还需要 __int64：海康头在 #ifdef WIN32 分支里写的是 MSVC 专有的
+#   typedef __int64 int64_t;
+# 而 MinGW 的 gcc 不认 __int64（-fms-extensions、gnu++17 都不行），故用宏替成等价类型。
+if(MINGW)
+    add_compile_definitions(WIN32)
+    add_compile_options("-D__int64=long long")
+endif()
+
+# -----------------------------------------------------------------------------
 # 工具链 / IDE：生成 compile_commands.json
 # -----------------------------------------------------------------------------
 # 开启后，在构建目录里生成 compile_commands.json，供 clangd、VS Code C++ 插件等
@@ -80,6 +104,19 @@ function(hik_wrapper_library target prefix src_dir sdk_inc sdk_lib)
         set_target_properties(${target}_shared PROPERTIES
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+    # MinGW（gcc）同样支持：GNU ld 能直接读海康那两个 MSVC 导入库，且导出符号
+    # 与 MSVC 构建逐字节一致（实测 13/13 未修饰同名）。两处与 MSVC 不同的处理：
+    #   1) 默认会加上 lib 前缀，产出 libhik_code_reader.dll，与 cgo / Node / Python
+    #      按名字找的 hik_code_reader.dll 对不上——去掉前缀。
+    #   2) 默认动态链接 GCC 运行库，会引入 libgcc_s_seh-1 / libstdc++-6 /
+    #      libwinpthread-1 三个额外依赖——静态并入，否则只是把「依赖微软的 3 个
+    #      DLL」换成「依赖 MinGW 的 3 个 DLL」，随包分发的问题原样保留。
+    if(MINGW)
+        set_target_properties(${target}_shared PROPERTIES PREFIX "")
+        target_link_options(${target}_shared PRIVATE
+            -static-libgcc -static-libstdc++ -static)
+    endif()
+    # 见文件顶部 MINGW 处关于 WIN32 的说明——不定义它会导致海康结构体布局错位。
     target_include_directories(${target}_shared
         PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
         PRIVATE ${sdk_inc} ${src_dir}
