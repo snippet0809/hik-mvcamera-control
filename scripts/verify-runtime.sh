@@ -73,7 +73,8 @@ check_abi() { # $1=标签 $2=头 $3=库 $4=符号前缀
 HDR_CR=runtime/include/hik_code_reader/c_api.h
 HDR_CV=runtime/include/hik_mvcamera/c_api.h
 
-# Windows：wrapper 与厂商 DLL 同放 bin/；导入库在 lib/（不参与符号比对）。
+# Windows：bin/ 里只有本项目自己的 wrapper（厂商 DLL 已改为使用方装 MVS/IDMVS 提供，
+# 不再随仓库分发），导入库在 lib/（不参与符号比对）。
 if [ -d runtime/windows-x86_64/bin ]; then
     check_abi "windows-x86_64 hik_code_reader" "$HDR_CR" runtime/windows-x86_64/bin/hik_code_reader.dll hik_cr
     check_abi "windows-x86_64 hik_mvcamera"    "$HDR_CV" runtime/windows-x86_64/bin/hik_mvcamera.dll    hik_cv

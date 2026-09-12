@@ -181,7 +181,7 @@ import (
 ```go
 #cgo CFLAGS: -I${SRCDIR}/../runtime/include
 #cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
-#cgo linux   LDFLAGS: ... -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+#cgo linux   LDFLAGS: ... -Wl,-rpath,$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
 ```
 
 **运行期**按平台分了不同路线（这是既定方案，不是可选项；两条路线可混用，exe 同目录优先）：
@@ -207,6 +207,16 @@ cgo 把这两个 wrapper 写进 exe 的 PE 导入表，它们又静态导入 `Mv
 （厂商 `.so` 随仓库分发，不是可选项）。万一你把二进制挪到别处，兜底是
 `LD_LIBRARY_PATH=<...>/linux-x86_64/lib`。
 
+> **坑：`$ORIGIN` 要写本字，不能写成 `$$ORIGIN`。** cgo 不做 Makefile 那套 `$$` 转义，
+> `-Wl,-rpath,$$ORIGIN/...` 会**原样**落进 `DT_RPATH`；而 ld.so 只认 `$ORIGIN`，遇到
+> `$$ORIGIN` 会把后半截按 `$ORIGIN` 展开、把第一个 `$` 当字面量留下，得到
+> `$/home/you/app/...` 这种不存在的路径，随包 `.so` 全部解析失败。表现是 `ldd` 报
+> `not found`、「解压即用」名存实亡，只能靠 `LD_LIBRARY_PATH` 兜底。
+> **构建期完全静默**——`go build` 一路绿灯，所以链接后务必核对：
+> `readelf -d hikprobe | grep -i rpath` 须打印字面 `$ORIGIN`。
+> 这个坑曾真实存在（2026-09-12 真机发现并修复），而 C++ 侧的 `all_tests` 用的是**绝对
+> 路径** RPATH，一直能跑，恰好把它盖住了。
+
 **平台与工具链**：
 
 - 仅支持 **windows/amd64** 与 **linux/amd64**（`runtime/` 里的厂商二进制只有这两个）。
@@ -225,6 +235,13 @@ copy ..\runtime\windows-x86_64\bin\hik_*.dll .
 .\hikprobe.exe -net=socket     # 诊断用：拿不到过滤驱动时到底能不能取流
 ```
 
+```bash
+# Linux（随包分发）：保持 runtime/ 与二进制的相对位置，无需安装任何东西
+go build -o hikprobe ./cmd/hikprobe
+readelf -d hikprobe | grep -i rpath   # 先确认是字面 $ORIGIN，见上文那个坑
+./hikprobe                            # 不设 LD_LIBRARY_PATH 也应能解析到随包 .so
+```
+
 它枚举读码器与相机、对找到的相机起流软触发取帧，并列出本进程已加载的非系统模块
 **及其来源**（exe 目录 / 其他位置）——看一眼就知道这次实际用的是哪一套运行时：
 
@@ -235,6 +252,16 @@ copy ..\runtime\windows-x86_64\bin\hik_*.dll .
 它还会先打印相机的采集节奏（`ExposureTime` / `ResultingFrameRate`），再**按实际帧率放宽
 软触发间隔**——快于采集周期的触发会被相机直接丢弃，不这样处理会把正常现象误判成丢帧
 （实测：曝光 500ms 时相机只有 1.66fps，300ms 间隔触发 3 次只能收到 2 帧）。
+
+**Linux 真机基线**（2026-09-12，Debian 12 / kernel 6.1 / glibc 2.36，相机 MV-CU120-10GC
+走 GigE）：枚举、起流、软触发 **3/3 帧**，`4024x3036` `BayerRG8`、payload `12216864`；
+`-net=auto` 即可（Linux 无过滤驱动，GigE 直接走内核 UDP 栈）；已加载的非系统模块 8 个
+**全部**落在 exe 目录内，且**未设 `LD_LIBRARY_PATH`**（即 `$ORIGIN` 真正生效）。
+`bash scripts/verify-runtime.sh` 亦全绿（25 个哈希 + 两平台各两库的符号比对）。
+这条路线可作回归基线。
+
+> 注：`hikprobe` 的读码器枚举会把 GigE **相机**一并列出来——IDMVS 读码器 SDK 的枚举
+> 不过滤机型，双方互相枚举是它的既有行为，不是本项目的问题。
 
 **私有仓库**：`go env -w GOPRIVATE=github.com/snippet0809/*`，必要时配置 SSH 或带 token 的 HTTPS。
 

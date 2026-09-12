@@ -20,7 +20,7 @@ package hikcv
 // Linux：wrapper 是 libhik_mvcamera.so，与厂商 .so 扁放在 lib/。
 // --disable-new-dtags 强制 DT_RPATH（会被传递依赖继承，且优先于 LD_LIBRARY_PATH），
 // 细节见 runtime 与 hikcr 的同名说明。
-#cgo linux LDFLAGS: -L${SRCDIR}/../runtime/linux-x86_64/lib -lhik_mvcamera -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+#cgo linux LDFLAGS: -L${SRCDIR}/../runtime/linux-x86_64/lib -lhik_mvcamera -Wl,-rpath,$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
 
 #include <stdlib.h>
 #include "hik_mvcamera/c_api.h"

@@ -36,6 +36,11 @@ wrapper_version     = 0.2.0
 #   工具链：Visual Studio Community 2026 (VS 18)，MSBuild 18.9.1。
 # Linux：gcc + -fPIC -shared，INSTALL_RPATH=$ORIGIN、--disable-new-dtags
 #   （DT_RPATH 而非 DT_RUNPATH：后者不被传递依赖继承）、-Bsymbolic、--no-undefined。
+#
+# 别把上面这条与 **Go 可执行文件**的 DT_RPATH 搞混：那是 cgo LDFLAGS 写的，不归 CMake 管，
+#   且那里 $ORIGIN 必须写**本字** —— cgo 不做 Makefile 的 $$ 转义，写成 $$ORIGIN 会原样进
+#   DT_RPATH，ld.so 展开出 "$<exe目录>" 这种不存在的路径，随包 .so 全部解析失败（构建期
+#   静默无警告）。2026-09-12 真机发现并修复，详见 README「Go 开发者」里的坑注。
 
 [vendor.windows-x86_64]
 # 这批文件不再随仓库分发，仅记录来源与版本，供交付时对齐（客户机器上装这两个包）。

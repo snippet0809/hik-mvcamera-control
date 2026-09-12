@@ -25,8 +25,12 @@ package hikcr
 // LD_LIBRARY_PATH，用户环境里杂散的 LD_LIBRARY_PATH 无法遮蔽随包库。
 // 注意 init() 里 setenv("LD_LIBRARY_PATH") 是无效的：ld.so 在 _start 之前就
 // 解析完 DT_NEEDED，且搜索路径在 ld.so 启动时只算一次。
-// $$ORIGIN 经 cgo 传给外部链接器；链接后须用 readelf -d 确认落成字面 $ORIGIN。
-#cgo linux LDFLAGS: -L${SRCDIR}/../runtime/linux-x86_64/lib -lhik_code_reader -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+// 这里写 $ORIGIN 本字，**不要**写 $$ORIGIN：cgo 不做 Makefile 那套 $$ 转义，`-Wl,-rpath,$$ORIGIN/...`
+// 会原样落到 DT_RPATH 里。ld.so 只认 $ORIGIN，遇到 "$$ORIGIN" 会吃掉后半截、只把第一个 $ 留作
+// 字面量，展开成 "$<exe目录>" —— 该路径不存在，随包 .so 全部解析失败（实测：DT_RPATH 为
+// $$ORIGIN 时 ldd 报 not found，只能靠 LD_LIBRARY_PATH 兜底，免安装分发名存实亡）。
+// 链接后仍建议 readelf -d 确认落成字面 $ORIGIN。
+#cgo linux LDFLAGS: -L${SRCDIR}/../runtime/linux-x86_64/lib -lhik_code_reader -Wl,-rpath,$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
 
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"

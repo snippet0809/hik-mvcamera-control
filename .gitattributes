@@ -3,6 +3,10 @@
 go.mod text eol=lf
 go.sum text eol=lf
 
+# 同理：core.autocrlf=true 会把 .sh 检出成 CRLF，`#!/usr/bin/env bash\r` 在 Git Bash
+# 与 Linux 下都会以「$'\r': 未找到命令」直接炸掉（CI 检出的是 LF，所以只有本地会中招）。
+*.sh   text eol=lf
+
 # 提交进仓库的海康运行时二进制：一律不做文本转换，也不参与 diff。
 # 厂商的 .ini/.properties 是带 BOM 的文本，core.autocrlf 下会被 CRLF 改写从而破坏哈希。
 runtime/** -text
