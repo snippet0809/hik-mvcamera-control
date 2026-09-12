@@ -17,7 +17,7 @@ flowchart TB
   DLLR["hik_code_reader.dll"]
   DLLM["hik_mvcamera.dll"]
   PY["python/hik_code_reader\n正式 wheel（读码器）"]
-  G["ffi/go/hikcr\ncgo（读码器）"]
+  G["hikcr / hikcv\ncgo（读码器 / 相机）"]
   PYref["ffi/python\nctypes 参考（读码器）"]
   NODE["ffi/node\nhik-mvcamera-control\n（读码器 + 相机）"]
   SDK --> CPPR --> CAPI --> DLLR
@@ -31,7 +31,7 @@ flowchart TB
 
 - **构建**：根目录 **CMake** 生成静态库、测试与 **共享库**（目标名见 `CMakeLists.txt`）。  
 - **Python 正式包**：`python/` 下 `build` 打 wheel，**`release.yml` 发版**仅将 **`hik_code_reader.dll`** 与海康 **`lib/MvCodeReader/win64/*.lib`** 拷入 `hik_code_reader/_native/`；**不把海康运行时 DLL 绑在「开发机是否安装 MVS」上**。终端环境通过安装 MVS/IDMVS Runtime 或你方**专用打包流水线**（自托管 Runner、私有制品等）提供 ``MvCodeReaderCtrl.dll`` 等。  
-- **Go**：`ffi/go` 通过 cgo 链接已构建的 DLL/导入库；**DLL 仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 `go.dev/issue/20982`）。
+- **Go**：`hikcr` / `hikcv` 通过 cgo 链接 `runtime/` 里已构建的转发库与厂商运行时，**使用方无需安装 MVS/IDMVS**（见下文「Go 开发者」）。**转发库仍由 CMake+MSVC 编出**，cgo 编译 C 片段需 **GCC 类工具链**（如 MinGW 的 `gcc`），勿将 `CC` 设为 `cl`（见 `go.dev/issue/20982`）。
 
 ### GitHub Actions 在流程中的位置
 
@@ -50,7 +50,7 @@ flowchart TB
 - **改参 / GenICam**：`startDevice` 第二参 `CodeReaderOpenParams` 含默认值，起流前写入；按需覆盖各成员即可。另提供与相机同构的参数读写 `setReaderParam` / `getReaderParam` / `runReaderCommand`（C ABI：`hik_cr_set_param` / `hik_cr_get_param` / `hik_cr_set_param_string` / `hik_cr_get_param_string`），可按 GenICam 节点名读写 Int/Float/Bool/Enum/String 并执行命令节点（如 `TriggerSoftware`）。
 - **GigE 枚举**：`enumDevice` / `hik_cr_enum_devices` 仍返回当前 **导出 IP**（`netExportIp`）等摘要，便于展示与日志；本库不再提供改 IP 的封装。
 - **BCR 回调指针生命周期**：`hik_cr_start_device` 的 BCR 回调传出的 `codes` 指针指向 SDK 保留到「下次解码」的结果，**在回调返回后仍短暂有效**，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。
-- **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`ffi/go`**。
+- **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`hikcr/`**（读码器）与 **`hikcv/`**（相机）。
 
 ## 在 GitHub 上托管分发（维护者）
 
@@ -62,13 +62,14 @@ GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代
 |------|----------|------|
 | Python wheel | **GitHub Releases** 附件 | 真实安装包；`pip` 最终下载的文件 |
 | `pip search` 式索引 | **GitHub Pages**（`gh-pages` 分支的 `simple/`） | 符合 **PEP 503**，让开发者能用 `pip install 包名==版本 --index-url ...` |
-| Go 源码模块 | **本仓库 Git** + 标签 **`ffi/go/vX.Y.Z`** | `go get` 经官方模块代理从 GitHub 拉取 |
+| Go 源码模块 | **本仓库 Git** + 标签 **`vX.Y.Z`**（模块根即仓库根） | `go get` 经官方模块代理从 GitHub 拉取 |
 
 ### 维护者一次性配置
 
-1. 保证 **`ffi/go/go.mod`** 第一行与 GitHub 仓库路径一致。本仓库应为：  
-   `module github.com/snippet0809/hik-mvcamera-control/ffi/go`  
-   （若 fork 后自用，请改为 `github.com/<你的用户名>/hik-mvcamera-control/ffi/go`。）
+1. 保证仓库根 **`go.mod`** 第一行与 GitHub 仓库路径一致。本仓库应为：  
+   `module github.com/snippet0809/hik-mvcamera-control`  
+   （若 fork 后自用，请改为 `github.com/<你的用户名>/hik-mvcamera-control`。）  
+   模块根即仓库根，所以 **`vX.Y.Z` 标签本身就是模块版本**，不再需要单独的 `ffi/go/v*` 标签。
 2. 在 GitHub 打开本仓库：**Settings → Pages**  
    - **Build and deployment**：Source 选 **Deploy from a branch**  
    - Branch 选 **`gh-pages`**，文件夹选 **`/(root)`**  
@@ -144,32 +145,75 @@ print(cr.enum_devices())
 
 ### Go 开发者
 
-**模块路径**（须与仓库 `go.mod` 一致）：
+**模块路径**（`go.mod` 在仓库根）：
 
 ```text
-github.com/snippet0809/hik-mvcamera-control/ffi/go
+github.com/snippet0809/hik-mvcamera-control
 ```
 
-**安装指定版本**（与已发布的 **`vX.Y.Z`** / 自动打的 **`ffi/go/vX.Y.Z`** 一致）：
+**安装**：
 
 ```bash
-go get github.com/snippet0809/hik-mvcamera-control/ffi/go@v0.0.2
+go get github.com/snippet0809/hik-mvcamera-control@v0.2.0
 ```
 
 **代码中导入**：
 
 ```go
-import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
+import (
+    "github.com/snippet0809/hik-mvcamera-control/hikcr" // 读码器
+    "github.com/snippet0809/hik-mvcamera-control/hikcv" // 相机
+)
 ```
 
-**说明**：
+> **破坏性变更**：早先的模块路径是 `.../hik-mvcamera-control/ffi/go`，包在 `.../ffi/go/hikcr`。
+> 现已抬到仓库根，导入路径变成 `.../hikcr` 与 `.../hikcv`，已有的 `import` 与 `require` 都要改。
+> 那次搬迁同时修好了两个让 `go get` 根本编不过的问题——旧的 cgo 头路径落在模块根之外
+> （模块 zip 拿不到 `include/`），且参数读写直接写了 `cv.type`（`type` 是 Go 保留字）
+> 与匿名 union 成员。**旧路径任何时候都没有真正可用过。**
 
-- **cgo**：需本机可链接 `hik_code_reader`（`.lib` + 运行时 `dll`）；**C 编译器用 MinGW `gcc` 等**，与用 MSVC 编出的 `hik_code_reader.dll` 不矛盾。**Release** 附件中的 zip 含 `ffi/go` 与 `include/hik_code_reader`，可与同版 `dll`/`lib` 一起用于集成。  
-- **Windows 运行时 DLL**：`hikcr` 在 cgo 加载前会按与上文 **Python（Windows）** 相同的规则调用 `AddDllDirectory`（`GENICAM_GENTL*`、`MVCAM_GENICAM_CLPROTOCOL`、`Path` 启发式，以及 **`HIK_CODE_READER_DLL`** 所在目录），便于解析 `MvCodeReaderCtrl.dll` 等依赖。  
-- **对外 ABI（业务四件）**：`hik_cr_enum_devices` / `hik_cr_start_device`（含 `HikCrOpenParams` 与 `HIK_CR_BCR_*` 登记或清除 BCR）/ `hik_cr_stop_device` / `hik_cr_trigger_device`；另有 `hik_cr_free_device_list`、`hik_cr_last_error_copy`。  
-- **私有仓库**：  
-  `go env -w GOPRIVATE=github.com/snippet0809/*`  
-  必要时配置 Git 使用 SSH 或带 token 的 HTTPS。
+**链接模型——无需安装 MVS/IDMVS**：头文件与库都来自仓库内提交的 `runtime/`
+（来源与哈希见 `runtime/VERSION`、`runtime/MANIFEST.sha256`），cgo 参数直接指向它：
+
+```go
+#cgo CFLAGS: -I${SRCDIR}/../runtime/include
+#cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
+#cgo linux   LDFLAGS: ... -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+```
+
+**部署时的唯一要求：把 `runtime/<平台>/` 里的转发库与厂商库，统统放到可执行文件旁边。**
+
+- **Windows**：`runtime/windows-x86_64/bin/` 的**全部内容**拷到 exe 同目录。cgo 会把
+  `hik_code_reader.dll` / `hik_mvcamera.dll` 写进 exe 的 PE 导入表，ntdll 在任何 Go 代码
+  运行之前就解析它们，所以**只能靠同目录**（`AddDllDirectory` / `PATH` 对这一步来不及，
+  它们只对 SDK 后续自己迟加载的那一层有用）。
+- **Linux**：`runtime/linux-x86_64/lib/` 与可执行文件保持 `$ORIGIN` 相对位置即可。
+  万一你把二进制挪到了别处，兜底是 `LD_LIBRARY_PATH=<...>/linux-x86_64/lib`。
+
+**平台与工具链**：
+
+- 仅支持 **windows/amd64** 与 **linux/amd64**（`runtime/` 里的厂商二进制只有这两个）。
+  其余平台会命中空包 stub，`go build` 不会失败，但调用点会报 `undefined`。
+- 需要 `CGO_ENABLED=1` 与 gcc/clang 工具链。Windows 下 **C 编译器用 MinGW `gcc` 等**，
+  勿设 `CC=cl`（见 `go.dev/issue/20982`）。
+- **cgo 不能交叉编译**：要在 Linux 上跑就在 Linux 上编。
+
+**免安装验收**（`cmd/hikprobe`）——只看「能枚举到设备」说明不了问题，装了 MVS 的机器上
+怎么跑都会成功。探针会额外**枚举本进程已加载的模块**，打印任何既不在 exe 目录、也不在
+系统目录下的模块：
+
+```bash
+go build -o hikprobe ./cmd/hikprobe
+# 把 runtime/windows-x86_64/bin/* 和 hikprobe.exe 放进同一个干净目录，然后：
+#   set PATH=C:\Windows\system32;C:\Windows
+#   set GENICAM_GENTL64_PATH= & set MVCAM_SDK_PATH= & set HIK_CODE_READER_DLL=
+#   hikprobe.exe -net=socket
+```
+
+期望：所有海康模块都标 `ok`（落在 exe 目录），末尾打印「免安装验收通过」。
+`-net` 可选 `auto` / `driver` / `socket`；`socket` 免 GigE 过滤驱动，是不装 MVS 时的选择。
+
+**私有仓库**：`go env -w GOPRIVATE=github.com/snippet0809/*`，必要时配置 SSH 或带 token 的 HTTPS。
 
 ## GitHub Actions 摘要
 
@@ -186,7 +230,12 @@ import "github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr"
 | `include/hik_code_reader/` | **C ABI 头文件**（`c_api.h`），供 Python/Go 等包含 |
 | `python/` | **`hik-code-reader`** 包与 `pyproject.toml`（wheel 的 `_native/` 含 DLL 与海康 win64 导入库） |
 | `ffi/python/` | ctypes 参考实现（与 `python/hik_code_reader` 保持同步为佳） |
-| `ffi/go/` | Go 子模块（`go.mod`）；包目录 `hikcr` |
+| `go.mod`（仓库根） | Go 模块根（模块路径即仓库路径） |
+| `hikcr/`、`hikcv/` | Go 包：读码器、相机（cgo，链接 `runtime/`） |
+| `runtime/` | **随仓库提交的海康运行时**（来源与哈希见 `runtime/VERSION`、`runtime/MANIFEST.sha256`）；`include/` 是 C ABI 头，`<平台>/` 是转发库与厂商库 |
+| `internal/hikdll/` | Windows 下登记厂商 DLL 搜索目录（`hikcr`/`hikcv` 共用） |
+| `cmd/hikprobe/` | 免安装验收探针（含已加载模块审计） |
+| `scripts/verify-runtime.sh` | 校验 `runtime/`：哈希 + ABI 三重守卫 |
 | `ffi/node/` | **统一 npm 包 `hik-mvcamera-control`**（node-addon-api）：单插件同时导出读码器（`HikCodeReader`）与相机（`HikCamera`）；预编译 `.node` + 读码器/相机运行时全捆绑 |
 | `include/MvCamera/`、`include/MvCodeReader/` | 海康 SDK 头文件 |
 | `lib/MvCamera/{win32,win64}/`、`lib/MvCodeReader/{win32,win64}/` | 预置静态库（含 `turbojpeg` 等读码器依赖） |
