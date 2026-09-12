@@ -37,7 +37,7 @@ flowchart TB
 
 | 环节 | Workflow | 作用（简述） |
 |------|----------|-------------|
-| 发版 | **`release.yml`** | 打 tag `v*` → 同步 `pyproject` 版本、构建产物、GitHub Release、**`gh-pages`**（含 PEP 503 + 主页）、`ffi/go/v*` 标签。 |
+| 发版 | **`release.yml`** | 打 tag `v*` → 同步 `pyproject` 版本、构建产物、GitHub Release（含免安装运行时包）、**`gh-pages`**（含 PEP 503 + 主页）；另有 `build-linux` 作业构建并校验 Linux `.so`。 |
 | 文档页增量 | **`pages-readme.yml`** | 仅 **`main`/`master`** 上 **README** 或 **`.github/scripts/`** 变更时，重生成 **主页** `index.html`，保留已有 **`simple/`**。 |
 
 **站点生成脚本**的模块关系、环境变量与两种模式说明见 **`.github/scripts/README.md`**（与根 README 互补：根文档讲「产品」，该文件讲「Pages 构建脚本怎么拼在一起」）。
@@ -82,9 +82,10 @@ GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代
    `git tag v0.0.2 && git push origin v0.0.2`  
 3. **GitHub Actions** 中 **`Release`** 工作流（`release.yml`）会自动：  
    - 将 **`python/pyproject.toml` 里的 `version`** 改成与标签一致（去掉 `v`，如 `v0.0.2` → `0.0.2`），再构建 **Windows x64 wheel**（`_native/` 内含 `hik_code_reader.dll` 与海康 `MvCodeReaderCtrl.lib` / `turbojpeg.lib`）；  
-   - 创建/更新 **GitHub Release**，并上传 wheel、Go/cgo 用 zip（含 `lib/MvCodeReader/win64`）、`hik_code_reader.dll`、`hik_code_reader.lib` 及上述厂商 `.lib`；  
+   - 创建/更新 **GitHub Release**，并上传 wheel、`hik_code_reader.dll` / `hik_code_reader.lib` 及上述厂商 `.lib`，以及**免安装运行时压缩包** `runtime/`；  
    - 生成 **PEP 503** 页面并推送到 **`gh-pages`**（与已有索引合并，保留历史版本链接）；  
-   - 在同一提交上自动创建 **`ffi/go/v0.0.2`** 标签（若不存在），供 `go get` 使用。
+   - 跑 **`scripts/verify-runtime.sh`**（哈希 + ABI 三重守卫）——头与二进制对不上时宁可不发版。  
+   - **不再**创建 `ffi/go/v*` 标签：Go 模块根已抬到仓库根，`vX.Y.Z` 标签本身就是模块版本。
 
 ### 发版后维护者自检
 
@@ -219,7 +220,7 @@ go build -o hikprobe ./cmd/hikprobe
 
 | Workflow | 说明 |
 |----------|------|
-| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）、自动 **`ffi/go/v*`** 标签。 |
+| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件（含**免安装运行时包** `runtime/`）、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）；`build-linux` 作业另建 Linux `.so` 并跑 `verify-runtime.sh`。 |
 | **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`** 或 **`.github/scripts/`** 下站点生成脚本时：只重部署 **根 `index.html`**（入口为 **`generate_pages_site.py`**），`keep_files` 保留 **`simple/`**。 |
 
 ## 仓库结构

@@ -60,12 +60,14 @@ jobs:
           python -m build --wheel --outdir dist .
         working-directory: python
 
-      - name: Zip ffi/go + C header (Go / cgo)
+      # 校验 runtime/：哈希 + ABI 三重守卫（头声明符号集 == 二进制导出符号集）。
+      # 放在打包之前——若 runtime/include 的头与 runtime 里的二进制对不上（「头新库旧」
+      # 这类），宁可让发版失败，也不要发出一个会静默读错数据的包。
+      - name: Verify runtime
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}"
-          $zip = "hik-mvcamera-control-ffi-go-$ver.zip"
-          Compress-Archive -Path "ffi/go", "include/hik_code_reader", "lib/MvCodeReader/win64" -DestinationPath "python/dist/$zip"
+          $env:PATH = "$env:PATH;" + (Split-Path (Get-Command objdump.exe -ErrorAction SilentlyContinue).Source -ErrorAction SilentlyContinue)
+          bash scripts/verify-runtime.sh
 
       - name: Assemble release assets
         shell: pwsh
@@ -75,6 +77,8 @@ jobs:
           Copy-Item -Force "build/hik_code_reader.dll" "publish/"
           Copy-Item -Force "build/hik_code_reader.lib" "publish/"
           Copy-Item -Force "lib/MvCodeReader/win64/*.lib" "publish/"
+          # 免安装分发用：整个裁剪过的运行时目录，使用方拷到 exe 旁边即可
+          Compress-Archive -Path "runtime" -DestinationPath "publish/hik-mvcamera-control-runtime-${{ github.ref_name }}.zip" -Force
           Get-ChildItem publish
 
       - id: wheelmeta
@@ -89,6 +93,52 @@ jobs:
           name: release-assets
           path: publish/
 
+  # Linux 侧只构建 + 校验，不发布：libhik_*.so 需要维护者提交回 runtime/linux-x86_64/lib
+  # 并重算 MANIFEST（这是唯一刻意保留的手动步骤，「头 + wrapper + 厂商运行时」原子三件套
+  # 的纪律就落在这里）。本作业的价值是：每次发版都验证已提交的 runtime 仍自洽，
+  # 并把新编的 .so 作为 artifact 供维护者取用。
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup CMake 4.x
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: "4.0.2"
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build g++
+
+      - name: Configure & build .so
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target hik_code_reader_shared hik_mvcamera_shared
+          ls -l build/libhik_*.so
+
+      # 断言链接期确实落地了 DT_RPATH=$ORIGIN：DT_RUNPATH 不被传递依赖继承，
+      # 管不到 wrapper -> 厂商 .so 那一跳（踩过：读码器 dlopen 失败报 0x8002000B）。
+      - name: Assert rpath and exports
+        run: |
+          set -e
+          for f in build/libhik_code_reader.so build/libhik_mvcamera.so; do
+            echo "--- $f"
+            readelf -d "$f" | grep -E 'RPATH|RUNPATH'
+            readelf -d "$f" | grep -qE 'RPATH.*\$ORIGIN' \
+              || { echo "缺少 DT_RPATH=\$ORIGIN"; exit 1; }
+            readelf -d "$f" | grep -q RUNPATH && { echo "出现了 RUNPATH，应为 RPATH"; exit 1; } || true
+          done
+          nm -D --defined-only build/libhik_code_reader.so | grep -q ' T hik_cr_enum_devices'
+          nm -D --defined-only build/libhik_mvcamera.so    | grep -q ' T hik_cv_enum_devices'
+
+      - name: Verify committed runtime (hash + ABI triples)
+        run: bash scripts/verify-runtime.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-so
+          path: build/libhik_*.so
+
   publish-release-pages:
     needs: build-windows
     runs-on: ubuntu-latest
@@ -97,17 +147,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure Go submodule tag ffi/go/<same as release>
-        run: |
-          T="ffi/go/${{ github.ref_name }}"
-          if git rev-parse "$T" >/dev/null 2>&1; then
-            echo "Tag $T already exists."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag "$T" "${{ github.sha }}"
-            git push origin "refs/tags/$T"
-          fi
+      # 注：Go 模块根已抬到仓库根（见 go.mod），本 tag 即模块版本，
+      # 不再需要单独维护 ffi/go/v* 标签。
 
       - uses: actions/download-artifact@v4
         with:
@@ -138,15 +179,30 @@ jobs:
               --trusted-host "${{ github.repository_owner }}.github.io"
             ```
 
-            ## Go（模块在 `ffi/go`）
+            ## Go（模块根即仓库根）
 
             ```bash
-            go get "github.com/${{ github.repository }}/ffi/go@${{ github.ref_name }}"
+            go get "github.com/${{ github.repository }}@${{ github.ref_name }}"
+            ```
+
+            ```go
+            import (
+                "github.com/${{ github.repository }}/hikcr" // 读码器
+                "github.com/${{ github.repository }}/hikcv" // 相机
+            )
             ```
 
             私有仓库：`GOPRIVATE=github.com/${{ github.repository_owner }}/*`
 
-            模块路径：`github.com/${{ github.repository }}/ffi/go`。与本 tag 对应的 **`ffi/go/${{ github.ref_name }}`** 标签由工作流维护，供 `go get` 解析版本。
+            模块路径为 `github.com/${{ github.repository }}`（`go.mod` 在仓库根），
+            所以**本 tag 就是模块版本**，不需要单独的 `ffi/go/v*` 标签。
+
+            ## 免安装运行时
+
+            附件中的 **`hik-mvcamera-control-runtime-${{ github.ref_name }}.zip`** 是裁剪过的
+            海康运行时（Windows x64 + Linux x86_64）。**使用方无需安装 MVS / IDMVS**：
+            解压后把对应平台目录里的库拷到可执行文件旁边即可。来源与校验见包内
+            `runtime/VERSION` 与 `runtime/MANIFEST.sha256`。
 
       - name: Fetch existing gh-pages simple index (merge links)
         run: |
