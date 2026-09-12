@@ -72,11 +72,11 @@ func loadedModules() []string {
 	return out
 }
 
-// dumpModules 打印所有既不在 exe 目录、也不在系统目录下的已加载模块。
+// dumpModules 列出非系统模块并标出来源：exe 目录 / 别处。
 //
-// 期望结果：海康相关的模块**全部**落在 exe 目录里。只要有一个落在
-// C:\Program Files (x86)\Common Files\MVS 或 ...\IDMVS\... 下，
-// 就说明这次运行**偷偷用到了本机安装的 MVS/IDMVS**，验收不成立。
+// 只报告、不判定。Windows 现在走的部署方式是「使用方自行安装 MVS/IDMVS」，
+// 海康模块来自 C:\Program Files (x86)\Common Files\MVS 或 ...\IDMVS\... 是**预期结果**；
+// 若它们出现在 exe 目录里，说明用的是随包分发那份。两种都能跑，看一眼来源即可。
 func dumpModules(exeDir string) {
 	mods := loadedModules()
 	if len(mods) == 0 {
@@ -90,30 +90,26 @@ func dumpModules(exeDir string) {
 	}
 	exeAbs, _ := filepath.Abs(exeDir)
 
-	fmt.Printf("\n=== 已加载模块（共 %d，仅列非系统） ===\n", len(mods))
-	var leaked []string
+	fmt.Printf("\n=== 已加载模块来源（共 %d，仅列非系统） ===\n", len(mods))
+	var inExe, elsewhere int
 	for _, m := range mods {
 		low := strings.ToLower(m)
 		if strings.HasPrefix(low, sysRoot) {
 			continue // 系统目录：UCRT、kernel32、以及 System32 里的 VC++ 运行库
 		}
 		abs, _ := filepath.Abs(m)
-		mark := "ok  "
-		if !strings.HasPrefix(strings.ToLower(abs), strings.ToLower(exeAbs)) {
-			mark = "!!  "
-			leaked = append(leaked, m)
+		src := "其他位置"
+		if strings.HasPrefix(strings.ToLower(abs), strings.ToLower(exeAbs)) {
+			src = "exe 目录"
+			inExe++
+		} else {
+			elsewhere++
 		}
-		fmt.Printf("  %s%s\n", mark, m)
+		fmt.Printf("  %-10s %s\n", src, m)
 	}
 
-	fmt.Println()
-	if len(leaked) == 0 {
-		fmt.Println("结果：exe 目录之外没有加载任何非系统模块 —— 免安装验收通过。")
-		return
+	fmt.Printf("\n  exe 目录：%d 个；其他位置：%d 个\n", inExe, elsewhere)
+	if elsewhere > 0 {
+		fmt.Println("  （其他位置里的海康模块来自已安装的 MVS/IDMVS —— 这是 Windows 既定部署方式下的正常结果）")
 	}
-	fmt.Printf("结果：有 %d 个模块来自 exe 目录之外 —— 免安装验收不成立：\n", len(leaked))
-	for _, m := range leaked {
-		fmt.Printf("  %s\n", m)
-	}
-	os.Exit(1)
 }

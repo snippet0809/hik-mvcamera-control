@@ -9,6 +9,22 @@ source_commit_short = fa8aba9
 source_date         = 2026-09-12 16:31
 wrapper_version     = 0.2.0
 
+# ── 分发模型（2026-09-12 起，Windows 侧改口径）──────────────────────────────
+# Windows 的**厂商**运行时不再随仓库分发，改由使用方自行安装 MVS/IDMVS 提供；
+#   runtime/windows-x86_64/bin/ 现在只有本项目自己的两个 wrapper。
+# Linux 侧不变：厂商 .so 仍随包分发（runtime/linux-x86_64/lib/），靠 DT_RPATH=$ORIGIN 解析。
+#
+# 依据：实测已安装 SDK 里的 MvCameraControl.dll / MvCodeReaderCtrl.dll / MvSmtDevCtrl.dll /
+#   MVGigEVisionSDK.dll / MvCamLVision.dll / MvSDKVersion.dll / MvRender.dll /
+#   GenApi_*.dll 与原先随包的那批**逐字节相同**（SHA-256 一致），即随包集本就是安装器
+#   产物的一份裁剪副本，换成「使用方装、我们从 PATH 找」不改变行为。
+# 为什么不能两边都随包：wrapper 的 PE 导入表里有 MvCodeReaderCtrl.dll / MVCameraControl.dll，
+#   ntdll 在任何 Go 代码运行之前就要解析它们；能解析的前提是「exe 同目录」或「进程启动前
+#   已在 PATH 上」——安装器写的机器级 PATH 恰好满足后者（实测：exe 旁只放两个 wrapper 即可
+#   枚举取流）。而 Windows 侧要拿 GigE 过滤驱动就只能安装（签名内核驱动，需管理员 + 重启），
+#   随包拿不到；Linux 侧没有过滤驱动这回事，随包不付功能代价。代价是 Windows 的版本由
+#   使用方决定，交付时按下方 [vendor.windows-x86_64] 的版本对齐。
+
 # ── wrapper 构建方式 ────────────────────────────────────────────────────────
 # Windows：MSVC /MT（静态链接 CRT）。
 #   这两个 DLL 随 runtime/ 分发，若用默认 /MD 会让使用方额外依赖 MSVCP140 /
@@ -22,12 +38,11 @@ wrapper_version     = 0.2.0
 #   （DT_RPATH 而非 DT_RUNPATH：后者不被传递依赖继承）、-Bsymbolic、--no-undefined。
 
 [vendor.windows-x86_64]
+# 这批文件不再随仓库分发，仅记录来源与版本，供交付时对齐（客户机器上装这两个包）。
 camera_package = MVS_SDK_V4_8_1_2_MVFG_V2_8_0_3_VC90_Runtime_STD.exe -> Win64_x64/
 camera_version = 工业相机SDK 4.8.1.2 Build 20260721
 reader_package = IDMVS_Win_CN_STD_5.1.0_260716.zip
 reader_version = 5.1.0
-files = 41
-bytes = 19925244
 
 [vendor.linux-x86_64]
 camera_package = MvCamCtrlSDK_Runtime-4.8.1_x86_64_20260729.tar.gz

@@ -2,8 +2,10 @@
 
 // Package hikcv：cgo 调用 hik_mvcamera C API（与 C++ camera.h 对齐）。
 //
-// 头文件与库都来自随仓库提交的 runtime/（来源见 runtime/VERSION），使用方
-// 无需安装 MVS/IDMVS。平台仅支持 windows/amd64 与 linux/amd64。
+// 构建期的头文件与导入库来自随仓库提交的 runtime/（来源见 runtime/VERSION）。
+// 运行期的海康相机运行时（MvCameraControl.dll 等）**由使用方自行安装 MVS 提供**，
+// exe 旁只需要本项目自己的 hik_mvcamera.dll；Linux 侧厂商 .so 随仓库分发、不走安装。
+// 平台仅支持 windows/amd64 与 linux/amd64。
 //
 // 与 hikcr 分开成两个包，是为了不让只用读码器的人被迫一起链接 libhik_mvcamera。
 package hikcv
@@ -11,7 +13,8 @@ package hikcv
 /*
 #cgo CFLAGS: -I${SRCDIR}/../runtime/include
 
-// Windows：wrapper 与厂商 DLL 同放 bin/；-l 命中 lib/hik_mvcamera.lib（MSVC 导入库）。
+// Windows：-l 命中 lib/hik_mvcamera.lib（MSVC 导入库）。bin/ 里只有本项目自己的 wrapper，
+// 厂商 DLL 由使用方安装 MVS 提供（详见 internal/hikdll 的包说明）。
 #cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_mvcamera
 
 // Linux：wrapper 是 libhik_mvcamera.so，与厂商 .so 扁放在 lib/。
@@ -61,12 +64,16 @@ const (
 )
 
 // GigE 传输模式（对应 HikCvOpenParams.net_trans_mode）。
+//
+// 装了 MVS（因而有 GigE 过滤驱动）时用 NetTransAuto 或 NetTransDriver；只有拿不到
+// 过滤驱动时（不装 SDK 的随包分发）才用 NetTransSocket——实测三种模式在装了 MVS 的
+// 机器上都能取到帧，差别在驱动模式由内核过滤驱动接管收包，socket 模式则不经它。
 const (
 	// NetTransAuto 不设置，随 SDK 默认（驱动模式）。需要装 MVS 的 GigE 过滤驱动。
 	NetTransAuto = 0
 	// NetTransDriver 强制走过滤驱动。
 	NetTransDriver = 1
-	// NetTransSocket 走 socket，**免 GigE 过滤驱动**——随包分发时的默认选择。
+	// NetTransSocket 走 socket，**免 GigE 过滤驱动**——不装 MVS 时的选择。
 	NetTransSocket = 2
 )
 
@@ -84,8 +91,9 @@ const (
 
 // OpenParams 对应 HikCvOpenParams。字段指针为 nil 表示不修改该 GenICam 节点。
 //
-// 想免装 MVS，请把 NetTransMode 设为 NetTransSocket；零值 NetTransAuto 会沿用
-// SDK 默认（驱动模式），在没有过滤驱动的机器上可能取不到流。
+// NetTransMode 零值 NetTransAuto 会沿用 SDK 默认（驱动模式），这与「使用方自己装 MVS」
+// 的部署路线一致，通常不用改。不装 SDK 的随包分发要显式设成 NetTransSocket，
+// 否则在没有过滤驱动的机器上可能取不到流。
 type OpenParams struct {
 	TriggerMode, TriggerSource *string
 	NetTransMode               int

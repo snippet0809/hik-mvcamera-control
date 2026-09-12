@@ -197,12 +197,17 @@ jobs:
             模块路径为 `github.com/${{ github.repository }}`（`go.mod` 在仓库根），
             所以**本 tag 就是模块版本**，不需要单独的 `ffi/go/v*` 标签。
 
-            ## 免安装运行时
+            ## 运行时
 
-            附件中的 **`hik-mvcamera-control-runtime-${{ github.ref_name }}.zip`** 是裁剪过的
-            海康运行时（Windows x64 + Linux x86_64）。**使用方无需安装 MVS / IDMVS**：
-            解压后把对应平台目录里的库拷到可执行文件旁边即可。来源与校验见包内
-            `runtime/VERSION` 与 `runtime/MANIFEST.sha256`。
+            附件 **`hik-mvcamera-control-runtime-${{ github.ref_name }}.zip`**：
+
+            - **Linux x86_64**：裁剪过的海康运行时 + 本项目 wrapper。解压后把库放到可执行
+              文件旁（保持 `$ORIGIN` 相对位置）即可，**无需安装 MVS/IDMVS**。
+            - **Windows x64**：只含本项目自己的 `hik_code_reader.dll` / `hik_mvcamera.dll`。
+              海康运行时**不随包分发**——请在使用方机器上安装 **MVS**（相机）与 **IDMVS**
+              （读码器，x64），版本见包内 `runtime/VERSION`。
+
+            来源与校验见包内 `runtime/VERSION` 与 `runtime/MANIFEST.sha256`。
 
       - name: Fetch existing gh-pages simple index (merge links)
         run: |

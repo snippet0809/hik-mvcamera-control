@@ -2,8 +2,10 @@
 
 // Package hikcr：cgo 调用 hik_code_reader C API（与 C++ code_reader.h 对齐）。
 //
-// 头文件与库都来自随仓库提交的 runtime/（来源见 runtime/VERSION），使用方
-// 无需安装 MVS/IDMVS。平台仅支持 windows/amd64 与 linux/amd64。
+// 构建期的头文件与导入库来自随仓库提交的 runtime/（来源见 runtime/VERSION）。
+// 运行期的海康读码器运行时（MvCodeReaderCtrl.dll 等）**由使用方自行安装 IDMVS 提供**，
+// exe 旁只需要本项目自己的 hik_code_reader.dll；Linux 侧厂商 .so 随仓库分发、不走安装。
+// 平台仅支持 windows/amd64 与 linux/amd64。
 package hikcr
 
 /*
@@ -12,8 +14,9 @@ package hikcr
 // 早先写成 ${SRCDIR}/../../../include（模块外）正因如此根本编不过。
 #cgo CFLAGS: -I${SRCDIR}/../runtime/include
 
-// Windows：wrapper 与厂商 DLL 同放 bin/；-l 会命中 lib/hik_code_reader.lib
-// （MSVC 导入库），GNU ld 的 -l 搜索同样认 .lib。
+// Windows：-l 会命中 lib/hik_code_reader.lib（MSVC 导入库），GNU ld 的 -l 搜索同样认 .lib。
+// bin/ 里现在只有本项目自己的 wrapper——厂商 DLL 由使用方安装 MVS/IDMVS 提供，
+// 所以构建期只需要 lib/ 下的导入库，运行期才需要厂商 DLL（见 internal/hikdll 的说明）。
 #cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
 
 // Linux：wrapper 是 libhik_*.so，与厂商 .so 一起扁放在 lib/。
@@ -70,7 +73,7 @@ const (
 // OpenParams 对应 HikCrOpenParams；字符串指针在 StartDevice 调用期间须保持有效（由本包拷贝到 C 栈上）。
 type OpenParams struct {
 	TriggerMode, TriggerSource *string
-	Code128, QRCode             *bool // nil → 使用默认 true
+	Code128, QRCode            *bool // nil → 使用默认 true
 }
 
 func lastError() string {

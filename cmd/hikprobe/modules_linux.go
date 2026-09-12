@@ -40,10 +40,11 @@ func loadedModules() []string {
 	return out
 }
 
-// dumpModules 打印所有既不在 exe 目录、也不在系统库目录下的已加载 .so。
+// dumpModules 列出非系统共享库并标出来源：exe 目录 / 别处。
 //
-// 期望结果：海康相关模块**全部**落在 exe 旁边（DT_RPATH=$ORIGIN 解析到的位置）。
-// 只要有一个来自 /opt/GenICam_v3_0、或运行机器上另行安装的 MVS，验收就不成立。
+// 只报告、不判定。Linux 侧的厂商 .so 随仓库分发，由链接期写死的 DT_RPATH=$ORIGIN
+// 解析，所以正常情况下都会落在 exe 目录之内（含 runtime/linux-x86_64/lib 子目录）；
+// 若出现来自 /opt/GenICam_v3_0 或系统另装的 MVS，说明这台机器上另有一套抢先了。
 func dumpModules(exeDir string) {
 	mods := loadedModules()
 	if len(mods) == 0 {
@@ -54,8 +55,8 @@ func dumpModules(exeDir string) {
 	exeAbs, _ := filepath.Abs(exeDir)
 	sysPrefixes := []string{"/lib/", "/lib64/", "/usr/lib/", "/usr/local/lib/"}
 
-	fmt.Printf("\n=== 已加载共享库（共 %d，仅列非系统） ===\n", len(mods))
-	var leaked []string
+	fmt.Printf("\n=== 已加载共享库来源（共 %d，仅列非系统） ===\n", len(mods))
+	var inExe, elsewhere int
 	for _, m := range mods {
 		sys := false
 		for _, p := range sysPrefixes {
@@ -72,22 +73,18 @@ func dumpModules(exeDir string) {
 		if resolved, err := filepath.EvalSymlinks(clean); err == nil {
 			clean = resolved
 		}
-		mark := "ok  "
-		if !strings.HasPrefix(clean, exeAbs) {
-			mark = "!!  "
-			leaked = append(leaked, m)
+		src := "其他位置"
+		if strings.HasPrefix(clean, exeAbs) {
+			src = "exe 目录"
+			inExe++
+		} else {
+			elsewhere++
 		}
-		fmt.Printf("  %s%s\n", mark, m)
+		fmt.Printf("  %-10s %s\n", src, m)
 	}
 
-	fmt.Println()
-	if len(leaked) == 0 {
-		fmt.Println("结果：exe 目录之外没有加载任何非系统库 —— 免安装验收通过。")
-		return
+	fmt.Printf("\n  exe 目录：%d 个；其他位置：%d 个\n", inExe, elsewhere)
+	if elsewhere > 0 {
+		fmt.Println("  （其余位置出现海康的库，说明本机另装了一套运行时并抢先被解析）")
 	}
-	fmt.Printf("结果：有 %d 个库来自 exe 目录之外 —— 免安装验收不成立：\n", len(leaked))
-	for _, m := range leaked {
-		fmt.Printf("  %s\n", m)
-	}
-	os.Exit(1)
 }
