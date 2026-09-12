@@ -245,22 +245,52 @@ go build -o hikprobe ./cmd/hikprobe
 ## 构建要求
 
 - **CMake** 4.0 及以上（见根目录 `CMakeLists.txt`）。
-- 支持 C++17 或项目所用特性的 **MSVC**（当前工程通过 `FetchContent` 拉取 **GoogleTest**）。
+- 支持 C++17 的 **MSVC**（当前工程通过 `FetchContent` 拉取 **GoogleTest**）。
 - **Windows**：默认链接 `lib/MvCodeReader/win64/MvCodeReaderCtrl.lib`；若在 32 位环境构建，需自行将 CMake 中的库路径改为 `win32` 对应文件。
+
+### 工具链怎么选：wrapper 用 MSVC，cgo 用 MinGW
+
+**构建 `hik_code_reader.dll` / `hik_mvcamera.dll` 请用 MSVC。**
+
+gcc(MinGW) 也能编——GNU ld 直接读海康那两个 MSVC 导入库没问题，导出符号与 MSVC 逐字节一致
+（13/13 未修饰同名）。但**默认配置下它会静默产生错误数据**：海康 `PixelType.h` 用
+`#ifdef WIN32` 在两种定义间切换，而 MinGW 只定义 `_WIN32`、不定义 `WIN32`，于是
+`MvGvspPixelType` 从 4 字节变 8 字节，`MV_FRAME_OUT_INFO_EX` 之后所有字段整体错位——
+`width`/`height` 恰好还对（它们在结构体开头），但 `frameLen` 读成 0、`frameNum` 是垃圾值。
+
+要修得加两个定义（CMake 的 `if(MINGW)` 分支已代劳）：`WIN32`（让枚举回到 4 字节），
+以及 `-D__int64="long long"`（`WIN32` 分支里写的是 MSVC 专有的 `typedef __int64 int64_t;`，
+MinGW 的 gcc 不认）。另需去掉产物名的 `lib` 前缀、并把 GCC 运行库静态并入。
+
+即便修好，这个位置仍是脆的：它依赖厂商头的 ifdef 写法，海康更新 SDK 可能重新错位。
+`tests/mvcamera_test.cpp` 里有逐帧元数据断言专门守这一点（校验 `frameLen` 与 `宽x高` 自洽），
+但**选与厂商相同的工具链仍然更省心**——wrapper 很少重新编译，MSVC 构建慢一点也不重要。
+
+**cgo 则必须用 MinGW**：Go 在 Windows 上的 cgo 不能用 `cl`（见 `go.dev/issue/20982`），
+所以 Go 使用者无论如何都要装 gcc 类工具链。两个工具链并存是正常状态，不是妥协。
 
 ## 构建与测试
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-ctest --test-dir build -C Release
+# MSVC（推荐）。生成器名跟本机 VS 版本走，用 cmake --help 查：
+#   VS 2026 -> "Visual Studio 18 2026"；VS 2022 -> "Visual Studio 17 2022"
+cmake -S . -B build-vs -G "Visual Studio 18 2026" -A x64
+cmake --build build-vs --config Release
+ctest --test-dir build-vs -C Release
 ```
 
-**无 VS2022 生成器时**可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 `build/hik_code_reader.dll`）：
+```powershell
+# MinGW（可用，但请先读上文的限制）
+cmake -S . -B build-mingw -G Ninja -DCMAKE_BUILD_TYPE=Release `
+      -DCMAKE_C_COMPILER=D:/mingw64/bin/gcc.exe -DCMAKE_CXX_COMPILER=D:/mingw64/bin/g++.exe
+cmake --build build-mingw
+```
+
+**用 MSVC 但想走 Ninja**（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境）：
 
 ```powershell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-ninja
 ```
 
 首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。
