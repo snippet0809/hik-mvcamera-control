@@ -1,6 +1,11 @@
 //go:build windows
 
-package hikcr
+// Package hikdll：Windows 下为海康运行时登记 DLL 搜索目录。
+//
+// hikcr 与 hikcv 都空导入本包。Go 规定「被导入包的 init 先于导入者」，
+// 而 cgo 生成的 _cgo_*.go 的 init 属于导入者包，所以本包的 init 必然先跑——
+// 早先靠文件名 `0_` 前缀在包内排字典序的做法因此不再需要。
+package hikdll
 
 import (
 	"os"
@@ -10,57 +15,31 @@ import (
 	"unsafe"
 )
 
-// 注册 DLL 搜索目录，并前置 PATH。
+// 先说清楚这个 init 能做什么、不能做什么：
 //
-// 必须先说清楚这个 init 能做什么、不能做什么：
+//	cgo 把 hik_code_reader.dll / hik_mvcamera.dll 写进可执行文件的 PE 导入表，
+//	ntdll 在**任何 Go 代码运行之前**就解析完了它们。所以这里**无法**帮助定位
+//	wrapper DLL 自身，也管不到它导入表里的那一层依赖。
 //
-//	cgo 把 hik_code_reader.dll 写进可执行文件的 PE 导入表，ntdll 在**任何 Go 代码
-//	运行之前**（早于 _start 之后的全部 init）就解析完了它。所以本文件**无法**帮助
-//	定位 hik_code_reader.dll 本身，也管不到它导入表里的那一层依赖。
-//
-// 它真正有用的是**海康 SDK 自己迟加载**的那一层：MVGigEVisionSDK.dll、
-// MvFGProducer*.cti、MvCamLVision.dll 等由 SDK 运行时 LoadLibrary/dlopen，
-// 那时这些目录已经在搜索路径里了。
+// 真正有用的是**海康 SDK 自己迟加载**的那一层：MVGigEVisionSDK.dll、
+//	MvFGProducer*.cti、MvCamLVision.dll 等由 SDK 运行时 LoadLibrary/dlopen。
 //
 // 结论（也是分发模型）：**所有 DLL 必须与可执行文件同目录**，或在该文件启动前
 // 已在 PATH 上。runtime/windows-x86_64/bin/ 的整个内容就是按这个前提设计的——
-// 把它整体拷到 exe 旁边即可，不需要安装 MVS/IDMVS。
+// 整体拷到 exe 旁边即可，不需要安装 MVS/IDMVS。
 //
 // 顺序：exe 自身目录 → GENICAM_GENTL* / MVCAM_GENICAM_CLPROTOCOL（装了 MVS 才有，
-// 作为兜底）→ Path 里含 mvs/idmvs 的项 → HIK_CODE_READER_DLL 所在目录。
-//
-// 文件名 0_ 前缀使本文件 init 在包内按字典序早于 hikcr.go、早于 _cgo_ 生成代码的 init。
+// 作兜底）→ Path 里含 mvs/idmvs 的项 → HIK_CODE_READER_DLL 所在目录。
 func init() {
-	dirs := windowsOfficialHikDllDirs()
+	dirs := officialDllDirs()
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	procAddDllDirectory := kernel32.NewProc("AddDllDirectory")
 	for _, dir := range dirs {
 		addDllDirectory(procAddDllDirectory, dir)
 	}
 	// Python 侧（python/hik_code_reader/_dll_utils.py）是 AddDllDirectory 与 PATH 两者都做；
-	// 这里补齐 PATH，否则通过 PATH 搜索的加载路径看不到这些目录。
+	// 这里补齐 PATH，否则仅靠 PATH 搜索的加载路径看不到这些目录。
 	prependPath(dirs)
-}
-
-func prependPath(dirs []string) {
-	if len(dirs) == 0 {
-		return
-	}
-	cur := os.Getenv("PATH")
-	joined := strings.Join(dirs, string(os.PathListSeparator))
-	if cur != "" {
-		joined += string(os.PathListSeparator) + cur
-	}
-	_ = os.Setenv("PATH", joined)
-}
-
-// exeDirIfAny 返回可执行文件所在目录——分发模型里最要紧的那个目录。
-func exeDirIfAny() []string {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil
-	}
-	return []string{filepath.Dir(exe)}
 }
 
 func addDllDirectory(proc *syscall.LazyProc, dir string) {
@@ -72,14 +51,29 @@ func addDllDirectory(proc *syscall.LazyProc, dir string) {
 	if err != nil {
 		return
 	}
-	r, _, _ := proc.Call(uintptr(unsafe.Pointer(p)))
-	if r == 0 {
-		return
-	}
+	proc.Call(uintptr(unsafe.Pointer(p)))
 }
 
-func is64BitArch() bool {
-	return unsafe.Sizeof(uintptr(0)) == 8
+func prependPath(dirs []string) {
+	if len(dirs) == 0 {
+		return
+	}
+	joined := strings.Join(dirs, string(os.PathListSeparator))
+	if cur := os.Getenv("PATH"); cur != "" {
+		joined += string(os.PathListSeparator) + cur
+	}
+	_ = os.Setenv("PATH", joined)
+}
+
+func is64BitArch() bool { return unsafe.Sizeof(uintptr(0)) == 8 }
+
+// exeDirIfAny 返回可执行文件所在目录——分发模型里最要紧的那个位置。
+func exeDirIfAny() []string {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	return []string{filepath.Dir(exe)}
 }
 
 func envDirIfExists(name string) []string {
@@ -87,13 +81,13 @@ func envDirIfExists(name string) []string {
 	if v == "" {
 		return nil
 	}
-	st, err := os.Stat(v)
-	if err != nil || !st.IsDir() {
+	if st, err := os.Stat(v); err != nil || !st.IsDir() {
 		return nil
 	}
 	return []string{v}
 }
 
+// pathEntriesHikMvs 挑出 PATH 里看着像海康安装目录的项，作为「装了 MVS/IDMVS」时的兜底。
 func pathEntriesHikMvs() []string {
 	p := os.Getenv("Path")
 	if p == "" {
@@ -119,7 +113,7 @@ func pathEntriesHikMvs() []string {
 	return out
 }
 
-func windowsOfficialHikDllDirs() []string {
+func officialDllDirs() []string {
 	seen := make(map[string]struct{})
 	var ordered []string
 	push := func(s string) {
@@ -134,8 +128,6 @@ func windowsOfficialHikDllDirs() []string {
 		ordered = append(ordered, abs)
 	}
 
-	// exe 自身目录在最前：随包运行时（runtime/windows-x86_64/bin/）就是拷到这里，
-	// 也是唯一不依赖使用者装过任何东西的位置。
 	for _, d := range exeDirIfAny() {
 		push(d)
 	}
@@ -154,10 +146,13 @@ func windowsOfficialHikDllDirs() []string {
 	for _, d := range pathEntriesHikMvs() {
 		push(d)
 	}
-	// 与 Python 一致：`hik_code_reader.dll` 所在目录在官方目录与 Path 启发式之后追加
-	if v := strings.TrimSpace(os.Getenv("HIK_CODE_READER_DLL")); v != "" {
-		if d := filepath.Dir(v); d != "." && d != "" {
-			push(d)
+	// 与 Python 一致：wrapper DLL 所在目录在官方目录与 Path 启发式之后追加。
+	// 读码器与相机两个环境变量都认，任一存在即可（两包共用本文件）。
+	for _, env := range []string{"HIK_CODE_READER_DLL", "HIK_MVCAMERA_DLL"} {
+		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+			if d := filepath.Dir(v); d != "." && d != "" {
+				push(d)
+			}
 		}
 	}
 	return ordered

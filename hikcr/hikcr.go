@@ -56,6 +56,9 @@ import (
 	"fmt"
 	"sync"
 	"unsafe"
+
+	// Windows 下先于本包 init 登记厂商 DLL 搜索目录（细节见该包文档）。
+	_ "github.com/snippet0809/hik-mvcamera-control/internal/hikdll"
 )
 
 const (
