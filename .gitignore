@@ -1,6 +1,7 @@
 # CMake / local build trees
 compile_commands.json
 build/
+build-*/
 out/
 cmake-build-*/
 

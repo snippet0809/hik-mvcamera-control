@@ -4,10 +4,20 @@
 #       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
 schema              = 2
 source_repo         = https://github.com/snippet0809/hik-mvcamera-control
-source_commit       = 3d19074cae4a01a9c72ba2d6a1717de76d76333d
-source_commit_short = 3d19074
-source_date         = 2026-09-12 15:12
+source_commit       = 6e034235b721bece1024abe11cfbee5061fb9404
+source_commit_short = 6e03423
+source_date         = 2026-09-12 15:51
 wrapper_version     = 0.2.0
+
+# wrapper（hik_code_reader / hik_mvcamera）为 **/MT 静态链接 CRT**：
+#   这两个 DLL 是随 runtime/ 分发的，若用默认的 /MD 会让使用方额外依赖
+#   MSVCP140 / VCRUNTIME140 —— 微软 VC++ 可再发行组件包里的文件，干净工控机上
+#   不一定有，会把「免安装」变成「不用装海康的，但要装微软的」。
+#   实测确认该依赖是本工程自己引入的：本目录内除这两个以外的每个 DLL（海康的全部
+#   在内）都不需要 VC14，它们用的是 MSVCR120 / MSVCP90 等更老的 CRT，已随包带上。
+#   安全性：导出的 C ABI 全是 POD 与裸指针，无 C++ 对象跨 DLL 边界。
+#   只作用于 _shared 目标；{target} 静态库仅测试用、不随包分发，保持 /MD。
+# 工具链：Visual Studio Community 2026 (VS 18)，MSBuild 18.9.1。
 
 [vendor.windows-x86_64]
 camera_package = MVS_SDK_V4_8_1_2_MVFG_V2_8_0_3_VC90_Runtime_STD.exe -> Win64_x64/
@@ -15,8 +25,8 @@ camera_version = 工业相机SDK 4.8.1.2 Build 20260721
 reader_package = IDMVS_Win_CN_STD_5.1.0_260716.zip
 reader_version = 5.1.0
 files = 41
-bytes = 19609852
+bytes = 19925244
 
 [vendor.linux-x86_64]
-# 待补：需要 Linux 主机或 CI 产出 libhik_*.so 后一并生成
+# 待补：需 Linux 主机或 CI 产出 libhik_*.so 后一并生成
 status = pending

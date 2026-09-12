@@ -63,6 +63,23 @@ function(hik_wrapper_library target prefix src_dir sdk_inc sdk_lib)
     # 共享库（与静态库共用 .cpp；DLL 基础名不带上 _static 后缀，避免与静态库同名冲突）
     add_library(${target}_shared SHARED ${ARGN})
     target_compile_definitions(${target}_shared PRIVATE ${prefix}_COMPILE_DLL)
+    # 静态链接 CRT（/MT）：这两个 DLL 是随 runtime/ 分发的，若用默认的 /MD 就会让使用方
+    # 额外依赖 MSVCP140 / VCRUNTIME140 —— 那是微软 VC++ 可再发行组件包里的文件，
+    # 干净工控机上不一定有，会把「免安装」变成「不用装海康的，但要装微软的」。
+    #
+    # 实测确认这个依赖是本工程自己引入的：runtime/ 里除这两个以外的每一个 DLL
+    # （海康的全部在内）都不需要 VC14，它们用的是 MSVCR120 / MSVCP90 等更老的 CRT，
+    # 而那些已经随包带上了。所以 /MT 的影响面为零。
+    #
+    # 安全性：导出的 C ABI 全是 const char* / size_t / POD 结构体 / 函数指针，
+    # 没有 C++ 对象跨 DLL 边界，不存在「两套 CRT、两个堆」的经典风险。
+    #
+    # 只作用于 _shared：{target} 静态库仅测试用、不随包分发，保持默认 /MD，
+    # 免得与同样用 /MD 的 GTest 混出 CRT 不匹配的链接错误。
+    if(MSVC)
+        set_target_properties(${target}_shared PROPERTIES
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
     target_include_directories(${target}_shared
         PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
         PRIVATE ${sdk_inc} ${src_dir}
