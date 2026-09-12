@@ -1,8 +1,30 @@
+//go:build cgo && (windows || linux) && amd64
+
 // Package hikcr：cgo 调用 hik_code_reader C API（与 C++ code_reader.h 对齐）。
+//
+// 头文件与库都来自随仓库提交的 runtime/（来源见 runtime/VERSION），使用方
+// 无需安装 MVS/IDMVS。平台仅支持 windows/amd64 与 linux/amd64。
 package hikcr
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../include
+// 运行时随包提交：头在 runtime/include，库在 runtime/<平台>/。
+// 这些路径必须留在模块根以内——`go get` 只会拉取 go.mod 所在目录下的文件，
+// 早先写成 ${SRCDIR}/../../../include（模块外）正因如此根本编不过。
+#cgo CFLAGS: -I${SRCDIR}/../runtime/include
+
+// Windows：wrapper 与厂商 DLL 同放 bin/；-l 会命中 lib/hik_code_reader.lib
+// （MSVC 导入库），GNU ld 的 -l 搜索同样认 .lib。
+#cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
+
+// Linux：wrapper 是 libhik_*.so，与厂商 .so 一起扁放在 lib/。
+// -Wl,--disable-new-dtags 强制落地 DT_RPATH 而非 DT_RUNPATH：DT_RUNPATH 不被
+// 传递依赖继承，管不到 wrapper -> 厂商 .so 那一跳；DT_RPATH 会继承，且优先于
+// LD_LIBRARY_PATH，用户环境里杂散的 LD_LIBRARY_PATH 无法遮蔽随包库。
+// 注意 init() 里 setenv("LD_LIBRARY_PATH") 是无效的：ld.so 在 _start 之前就
+// 解析完 DT_NEEDED，且搜索路径在 ld.so 启动时只算一次。
+// $$ORIGIN 经 cgo 传给外部链接器；链接后须用 readelf -d 确认落成字面 $ORIGIN。
+#cgo linux LDFLAGS: -L${SRCDIR}/../runtime/linux-x86_64/lib -lhik_code_reader -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+
 #include <stdlib.h>
 #include "hik_code_reader/c_api.h"
 
@@ -11,6 +33,22 @@ extern void hikcrGoBcrShim(char *serial_utf8, char **codes, int code_count, void
 static HikCrBcrCallback hikcr_wrap_bcr_shim(void) {
 	return (HikCrBcrCallback)hikcrGoBcrShim;
 }
+
+// HikCrParamValue 的两个成员 cgo 都碰不到：
+//   - `type` 是 Go 保留字，写 v.type 直接是语法错误；
+//   - `i`/`f`/`b`/`e` 在匿名 union 内，cgo 不支持访问匿名 union 成员。
+// 所以用下面这组薄存取器绕开。
+static void hikcr_pv_set_type(HikCrParamValue *v, int t)      { v->type = (HikCrParamType)t; }
+static void hikcr_pv_set_int(HikCrParamValue *v, long long x) { v->i = (int64_t)x; }
+static void hikcr_pv_set_float(HikCrParamValue *v, double x)  { v->f = x; }
+static void hikcr_pv_set_bool(HikCrParamValue *v, int x)      { v->b = x; }
+static void hikcr_pv_set_enum(HikCrParamValue *v, unsigned x) { v->e = (uint32_t)x; }
+
+static int          hikcr_pv_get_type(const HikCrParamValue *v)  { return (int)v->type; }
+static long long    hikcr_pv_get_int(const HikCrParamValue *v)   { return (long long)v->i; }
+static double       hikcr_pv_get_float(const HikCrParamValue *v) { return v->f; }
+static int          hikcr_pv_get_bool(const HikCrParamValue *v)  { return v->b; }
+static unsigned int hikcr_pv_get_enum(const HikCrParamValue *v)  { return (unsigned int)v->e; }
 */
 import "C"
 
@@ -183,21 +221,21 @@ func SetParam(serial, name string, kind ParamKind, value any) error {
 	var cv C.HikCrParamValue
 	switch kind {
 	case ParamInt:
-		cv.type = C.HIK_CR_PARAM_INT
-		cv.i = C.int64_t(value.(int64))
+		C.hikcr_pv_set_type(&cv, C.HIK_CR_PARAM_INT)
+		C.hikcr_pv_set_int(&cv, C.longlong(value.(int64)))
 	case ParamFloat:
-		cv.type = C.HIK_CR_PARAM_FLOAT
-		cv.f = C.double(value.(float64))
+		C.hikcr_pv_set_type(&cv, C.HIK_CR_PARAM_FLOAT)
+		C.hikcr_pv_set_float(&cv, C.double(value.(float64)))
 	case ParamBool:
-		cv.type = C.HIK_CR_PARAM_BOOL
+		C.hikcr_pv_set_type(&cv, C.HIK_CR_PARAM_BOOL)
 		if value.(bool) {
-			cv.b = 1
+			C.hikcr_pv_set_bool(&cv, 1)
 		}
 	case ParamEnum:
-		cv.type = C.HIK_CR_PARAM_ENUM
-		cv.e = C.uint32_t(value.(uint32))
+		C.hikcr_pv_set_type(&cv, C.HIK_CR_PARAM_ENUM)
+		C.hikcr_pv_set_enum(&cv, C.uint(value.(uint32)))
 	case ParamCommand:
-		cv.type = C.HIK_CR_PARAM_COMMAND
+		C.hikcr_pv_set_type(&cv, C.HIK_CR_PARAM_COMMAND)
 	default:
 		return fmt.Errorf("SetParam: invalid kind %d", kind)
 	}
@@ -225,15 +263,15 @@ func GetParam(serial, name string) (kind ParamKind, value any, err error) {
 	if err := check(C.hik_cr_get_param(cs, cn, &cv)); err != nil {
 		return 0, nil, err
 	}
-	switch cv.type {
+	switch C.hikcr_pv_get_type(&cv) {
 	case C.HIK_CR_PARAM_INT:
-		return ParamInt, int64(cv.i), nil
+		return ParamInt, int64(C.hikcr_pv_get_int(&cv)), nil
 	case C.HIK_CR_PARAM_FLOAT:
-		return ParamFloat, float64(cv.f), nil
+		return ParamFloat, float64(C.hikcr_pv_get_float(&cv)), nil
 	case C.HIK_CR_PARAM_BOOL:
-		return ParamBool, cv.b != 0, nil
+		return ParamBool, C.hikcr_pv_get_bool(&cv) != 0, nil
 	case C.HIK_CR_PARAM_ENUM:
-		return ParamEnum, uint32(cv.e), nil
+		return ParamEnum, uint32(C.hikcr_pv_get_enum(&cv)), nil
 	default:
 		return ParamString, "", fmt.Errorf("GetParam: string 节点请用 GetParamString")
 	}
