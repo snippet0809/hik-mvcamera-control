@@ -285,8 +285,8 @@
 </code></pre>
 <ul>
 <li><strong>构建</strong>：根目录 <strong>CMake</strong> 生成静态库、测试与 <strong>共享库</strong>（目标名见 <code>CMakeLists.txt</code>）。  </li>
-<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，<strong><code>release.yml</code> 发版</strong>仅将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>；<strong>不把海康运行时 DLL 绑在「开发机是否安装 MVS」上</strong>。终端环境通过安装 MVS/IDMVS Runtime 或你方<strong>专用打包流水线</strong>（自托管 Runner、私有制品等）提供 <code>MvCodeReaderCtrl.dll</code> 等。  </li>
-<li><strong>Go</strong>：<code>hikcr</code> / <code>hikcv</code> 通过 cgo 链接 <code>runtime/</code> 里已构建的转发库与厂商运行时，<strong>使用方无需安装 MVS/IDMVS</strong>（见下文「Go 开发者」）。<strong>转发库仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
+<li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，<strong><code>release.yml</code> 发版</strong>仅将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>；<strong>不把海康运行时 DLL 绑在「开发机是否安装 MVS」上</strong>。终端环境通过安装 MVS/IDMVS Runtime 或你方<strong>专用打包流水线</strong>（自托管 Runner、私有制品等）提供 <code>MvCodeReaderCtrl.dll</code> 等。<strong>Go 侧自 2026-09-12 起采用同一口径</strong>（见下文「Go 开发者」）。  </li>
+<li><strong>Go</strong>：<code>hikcr</code> / <code>hikcv</code> 通过 cgo 链接 <code>runtime/</code> 里已构建的转发库。Windows 侧的海康运行时<strong>由使用方自行安装 MVS/IDMVS 提供</strong>（与 Python 侧同一口径），Linux 侧仍随包分发；两条路线的取舍与验收手段见下文「Go 开发者」。<strong>转发库仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
 </ul>
 <h3>GitHub Actions 在流程中的位置</h3>
 <table>
@@ -301,7 +301,7 @@
 <tr>
 <td>发版</td>
 <td><strong><code>release.yml</code></strong></td>
-<td>打 tag <code>v*</code> → 同步 <code>pyproject</code> 版本、构建产物、GitHub Release（含免安装运行时包）、<strong><code>gh-pages</code></strong>（含 PEP 503 + 主页）；另有 <code>build-linux</code> 作业构建并校验 Linux <code>.so</code>。</td>
+<td>打 tag <code>v*</code> → 同步 <code>pyproject</code> 版本、构建产物、GitHub Release（含运行时包）、<strong><code>gh-pages</code></strong>（含 PEP 503 + 主页）；另有 <code>build-linux</code> 作业构建并校验 Linux <code>.so</code>。</td>
 </tr>
 <tr>
 <td>文档页增量</td>
@@ -368,7 +368,7 @@
 <code>git tag v0.0.2 &amp;&amp; git push origin v0.0.2</code>  </li>
 <li><strong>GitHub Actions</strong> 中 <strong><code>Release</code></strong> 工作流（<code>release.yml</code>）会自动：  </li>
 <li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.0.2</code> → <code>0.0.2</code>），再构建 <strong>Windows x64 wheel</strong>（<code>_native/</code> 内含 <code>hik_code_reader.dll</code> 与海康 <code>MvCodeReaderCtrl.lib</code> / <code>turbojpeg.lib</code>）；  </li>
-<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、<code>hik_code_reader.dll</code> / <code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>，以及<strong>免安装运行时压缩包</strong> <code>runtime/</code>；  </li>
+<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、<code>hik_code_reader.dll</code> / <code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>，以及<strong>运行时压缩包</strong> <code>runtime/</code>（Linux 侧解压即用；Windows 侧只含本项目 wrapper）；  </li>
 <li>生成 <strong>PEP 503</strong> 页面并推送到 <strong><code>gh-pages</code></strong>（与已有索引合并，保留历史版本链接）；  </li>
 <li>跑 <strong><code>scripts/verify-runtime.sh</code></strong>（哈希 + ABI 三重守卫）——头与二进制对不上时宁可不发版。  </li>
 <li><strong>不再</strong>创建 <code>ffi/go/v*</code> 标签：Go 模块根已抬到仓库根，<code>vX.Y.Z</code> 标签本身就是模块版本。</li>
@@ -437,21 +437,58 @@ print(cr.enum_devices())
 （模块 zip 拿不到 <code>include/</code>），且参数读写直接写了 <code>cv.type</code>（<code>type</code> 是 Go 保留字）<br />
 与匿名 union 成员。<strong>旧路径任何时候都没有真正可用过。</strong></p>
 </blockquote>
-<p><strong>链接模型——无需安装 MVS/IDMVS</strong>：头文件与库都来自仓库内提交的 <code>runtime/</code><br />
-（来源与哈希见 <code>runtime/VERSION</code>、<code>runtime/MANIFEST.sha256</code>），cgo 参数直接指向它：</p>
+<p><strong>链接模型：构建期与运行期分开看。</strong></p>
+<p><strong>构建期</strong>只依赖本项目自己的东西——头在 <code>runtime/include</code>，导入库在<br />
+<code>runtime/windows-x86_64/lib</code>，cgo 参数直接指向它们：</p>
 <pre><code class="language-go">#cgo CFLAGS: -I${SRCDIR}/../runtime/include
 #cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
-#cgo linux   LDFLAGS: ... -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+#cgo linux   LDFLAGS: ... -Wl,-rpath,$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
 </code></pre>
-<p><strong>部署时的唯一要求：把 <code>runtime/&lt;平台&gt;/</code> 里的转发库与厂商库，统统放到可执行文件旁边。</strong></p>
-<ul>
-<li><strong>Windows</strong>：<code>runtime/windows-x86_64/bin/</code> 的<strong>全部内容</strong>拷到 exe 同目录。cgo 会把<br />
-<code>hik_code_reader.dll</code> / <code>hik_mvcamera.dll</code> 写进 exe 的 PE 导入表，ntdll 在任何 Go 代码<br />
-  运行之前就解析它们，所以<strong>只能靠同目录</strong>（<code>AddDllDirectory</code> / <code>PATH</code> 对这一步来不及，<br />
-  它们只对 SDK 后续自己迟加载的那一层有用）。</li>
-<li><strong>Linux</strong>：<code>runtime/linux-x86_64/lib/</code> 与可执行文件保持 <code>$ORIGIN</code> 相对位置即可。<br />
-  万一你把二进制挪到了别处，兜底是 <code>LD_LIBRARY_PATH=&lt;...&gt;/linux-x86_64/lib</code>。</li>
-</ul>
+<p><strong>运行期</strong>按平台分了不同路线（这是既定方案，不是可选项；两条路线可混用，exe 同目录优先）：</p>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>路线</th>
+<th>谁提供海康运行时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Windows</strong></td>
+<td>使用方自行安装</td>
+<td><strong>MVS</strong>（相机）+ <strong>IDMVS</strong>（读码器），x64。安装器会写机器级 PATH，进程启动时继承</td>
+</tr>
+<tr>
+<td><strong>Linux</strong></td>
+<td>随包分发</td>
+<td><code>runtime/linux-x86_64/lib/</code> 里的副本，与 exe 保持 <code>$ORIGIN</code> 相对位置，<strong>使用方无需安装任何东西</strong></td>
+</tr>
+</tbody>
+</table>
+<p>为什么不按同一套口径：<strong>判据是「要的东西能不能随包走」</strong>。Linux 要的是用户态 <code>.so</code>（能随包，RPATH 就能解析，且 Linux 侧 GigE 直接走内核 UDP 栈、<strong>没有过滤驱动这回事</strong>）；Windows 要拿到 GigE 过滤驱动 <code>neugevfilter</code> ——那是签名内核驱动，只能靠安装（管理员 + 重启），随包拿不到。所以不对称是被这个约束逼出来的，代价必须认：<strong>Windows 侧的版本由使用方决定</strong>，交付时按 <code>runtime/VERSION</code> 记的厂商版本对齐，并用下节的 <code>hikprobe</code> 确认实际用的是哪一套。</p>
+<p><strong>Windows + 已装 SDK</strong>：exe 旁<strong>只需要 <code>hik_code_reader.dll</code> 与 <code>hik_mvcamera.dll</code></strong>。<br />
+cgo 把这两个 wrapper 写进 exe 的 PE 导入表，它们又静态导入 <code>MvCodeReaderCtrl.dll</code> /<br />
+<code>MVCameraControl.dll</code>，ntdll 在任何 Go 代码运行之前就要解析这一串；能解析的前提是<br />
+「exe 同目录」或「进程启动前已在 PATH 上」，而 MVS/IDMVS 安装器把运行时目录写进<br />
+<strong>机器级 PATH</strong>，进程启动时继承下来——整条链就自动打通了（实测：exe 旁只放两个 wrapper，<br />
+枚举与取流均正常，走 <code>driver</code> 模式）。</p>
+<p>两个好处：拿到 GigE <strong>过滤驱动</strong>（否则只能 <code>socket</code> 模式），以及不必在每个 exe 旁维护<br />
+35 个厂商文件。代价是<strong>版本由使用方决定</strong>，对策见下节。</p>
+<p><strong>Linux</strong>：<code>runtime/linux-x86_64/lib/</code> 与可执行文件保持 <code>$ORIGIN</code> 相对位置即可<br />
+（厂商 <code>.so</code> 随仓库分发，不是可选项）。万一你把二进制挪到别处，兜底是<br />
+<code>LD_LIBRARY_PATH=&lt;...&gt;/linux-x86_64/lib</code>。</p>
+<blockquote>
+<p><strong>坑：<code>$ORIGIN</code> 要写本字，不能写成 <code>$$ORIGIN</code>。</strong> cgo 不做 Makefile 那套 <code>$$</code> 转义，<br />
+<code>-Wl,-rpath,$$ORIGIN/...</code> 会<strong>原样</strong>落进 <code>DT_RPATH</code>；而 ld.so 只认 <code>$ORIGIN</code>，遇到<br />
+<code>$$ORIGIN</code> 会把后半截按 <code>$ORIGIN</code> 展开、把第一个 <code>$</code> 当字面量留下，得到<br />
+<code>$/home/you/app/...</code> 这种不存在的路径，随包 <code>.so</code> 全部解析失败。表现是 <code>ldd</code> 报<br />
+<code>not found</code>、「解压即用」名存实亡，只能靠 <code>LD_LIBRARY_PATH</code> 兜底。<br />
+<strong>构建期完全静默</strong>——<code>go build</code> 一路绿灯，所以链接后务必核对：<br />
+<code>readelf -d hikprobe | grep -i rpath</code> 须打印字面 <code>$ORIGIN</code>。<br />
+这个坑曾真实存在（2026-09-12 真机发现并修复），而 C++ 侧的 <code>all_tests</code> 用的是<strong>绝对<br />
+路径</strong> RPATH，一直能跑，恰好把它盖住了。</p>
+</blockquote>
 <p><strong>平台与工具链</strong>：</p>
 <ul>
 <li>仅支持 <strong>windows/amd64</strong> 与 <strong>linux/amd64</strong>（<code>runtime/</code> 里的厂商二进制只有这两个）。<br />
@@ -460,17 +497,38 @@ print(cr.enum_devices())
   勿设 <code>CC=cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
 <li><strong>cgo 不能交叉编译</strong>：要在 Linux 上跑就在 Linux 上编。</li>
 </ul>
-<p><strong>免安装验收</strong>（<code>cmd/hikprobe</code>）——只看「能枚举到设备」说明不了问题，装了 MVS 的机器上<br />
-怎么跑都会成功。探针会额外<strong>枚举本进程已加载的模块</strong>，打印任何既不在 exe 目录、也不在<br />
-系统目录下的模块：</p>
-<pre><code class="language-bash">go build -o hikprobe ./cmd/hikprobe
-# 把 runtime/windows-x86_64/bin/* 和 hikprobe.exe 放进同一个干净目录，然后：
-#   set PATH=C:\Windows\system32;C:\Windows
-#   set GENICAM_GENTL64_PATH= &amp; set MVCAM_SDK_PATH= &amp; set HIK_CODE_READER_DLL=
-#   hikprobe.exe -net=socket
+<h3>验收：<code>cmd/hikprobe</code></h3>
+<pre><code class="language-powershell">go build -o hikprobe.exe ./cmd/hikprobe
+# Windows（既定：使用方自装 MVS/IDMVS）：exe 旁只放两个 wrapper
+copy ..\runtime\windows-x86_64\bin\hik_*.dll .
+.\hikprobe.exe                 # 默认 -net=auto，随 SDK 默认走 GigE 过滤驱动（装了 MVS 就有）
+.\hikprobe.exe -net=socket     # 诊断用：拿不到过滤驱动时到底能不能取流
 </code></pre>
-<p>期望：所有海康模块都标 <code>ok</code>（落在 exe 目录），末尾打印「免安装验收通过」。<br />
-<code>-net</code> 可选 <code>auto</code> / <code>driver</code> / <code>socket</code>；<code>socket</code> 免 GigE 过滤驱动，是不装 MVS 时的选择。</p>
+<pre><code class="language-bash"># Linux（随包分发）：保持 runtime/ 与二进制的相对位置，无需安装任何东西
+go build -o hikprobe ./cmd/hikprobe
+readelf -d hikprobe | grep -i rpath   # 先确认是字面 $ORIGIN，见上文那个坑
+./hikprobe                            # 不设 LD_LIBRARY_PATH 也应能解析到随包 .so
+</code></pre>
+<p>它枚举读码器与相机、对找到的相机起流软触发取帧，并列出本进程已加载的非系统模块<br />
+<strong>及其来源</strong>（exe 目录 / 其他位置）——看一眼就知道这次实际用的是哪一套运行时：</p>
+<ul>
+<li><strong>Windows</strong>：海康模块来自 <code>Common Files\MVS</code> 与 <code>IDMVS\...\mvsidcamctrl</code> 是预期结果<br />
+  （走的就是使用方装的那套）。</li>
+<li><strong>Linux</strong>：海康模块应落在 exe 目录之内（随包分发，靠 <code>DT_RPATH=$ORIGIN</code> 解析）。</li>
+</ul>
+<p>它还会先打印相机的采集节奏（<code>ExposureTime</code> / <code>ResultingFrameRate</code>），再<strong>按实际帧率放宽<br />
+软触发间隔</strong>——快于采集周期的触发会被相机直接丢弃，不这样处理会把正常现象误判成丢帧<br />
+（实测：曝光 500ms 时相机只有 1.66fps，300ms 间隔触发 3 次只能收到 2 帧）。</p>
+<p><strong>Linux 真机基线</strong>（2026-09-12，Debian 12 / kernel 6.1 / glibc 2.36，相机 MV-CU120-10GC<br />
+走 GigE）：枚举、起流、软触发 <strong>3/3 帧</strong>，<code>4024x3036</code> <code>BayerRG8</code>、payload <code>12216864</code>；<br />
+<code>-net=auto</code> 即可（Linux 无过滤驱动，GigE 直接走内核 UDP 栈）；已加载的非系统模块 8 个<br />
+<strong>全部</strong>落在 exe 目录内，且<strong>未设 <code>LD_LIBRARY_PATH</code></strong>（即 <code>$ORIGIN</code> 真正生效）。<br />
+<code>bash scripts/verify-runtime.sh</code> 亦全绿（25 个哈希 + 两平台各两库的符号比对）。<br />
+这条路线可作回归基线。</p>
+<blockquote>
+<p>注：<code>hikprobe</code> 的读码器枚举会把 GigE <strong>相机</strong>一并列出来——IDMVS 读码器 SDK 的枚举<br />
+不过滤机型，双方互相枚举是它的既有行为，不是本项目的问题。</p>
+</blockquote>
 <p><strong>私有仓库</strong>：<code>go env -w GOPRIVATE=github.com/snippet0809/*</code>，必要时配置 SSH 或带 token 的 HTTPS。</p>
 <h2>GitHub Actions 摘要</h2>
 <table>
@@ -483,7 +541,7 @@ print(cr.enum_devices())
 <tbody>
 <tr>
 <td><strong>Release</strong>（<code>.github/workflows/release.yml</code>）</td>
-<td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件（含<strong>免安装运行时包</strong> <code>runtime/</code>）、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）；<code>build-linux</code> 作业另建 Linux <code>.so</code> 并跑 <code>verify-runtime.sh</code>。</td>
+<td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件（含<strong>运行时包</strong> <code>runtime/</code>）、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）；<code>build-linux</code> 作业另建 Linux <code>.so</code> 并跑 <code>verify-runtime.sh</code>。</td>
 </tr>
 <tr>
 <td><strong>Pages (README)</strong>（<code>.github/workflows/pages-readme.yml</code>）</td>
@@ -526,7 +584,7 @@ print(cr.enum_devices())
 </tr>
 <tr>
 <td><code>runtime/</code></td>
-<td><strong>随仓库提交的海康运行时</strong>（来源与哈希见 <code>runtime/VERSION</code>、<code>runtime/MANIFEST.sha256</code>）；<code>include/</code> 是 C ABI 头，<code>&lt;平台&gt;/</code> 是转发库与厂商库</td>
+<td>头文件 + 本项目 wrapper + <strong>Linux 侧</strong>随包的厂商运行时；来源与哈希见 <code>runtime/VERSION</code>、<code>runtime/MANIFEST.sha256</code>。Windows 侧厂商运行时不在此（由使用方装 MVS/IDMVS 提供）</td>
 </tr>
 <tr>
 <td><code>internal/hikdll/</code></td>
@@ -534,7 +592,7 @@ print(cr.enum_devices())
 </tr>
 <tr>
 <td><code>cmd/hikprobe/</code></td>
-<td>免安装验收探针（含已加载模块审计）</td>
+<td>设备验收探针（枚举/起流取帧 + 已加载模块来源）</td>
 </tr>
 <tr>
 <td><code>scripts/verify-runtime.sh</code></td>
@@ -608,9 +666,13 @@ cmake --build build-ninja
 </ul>
 <h2>运行与部署说明</h2>
 <ol>
-<li>在目标机器安装海康读码器/视觉设备所需 <strong>驱动与运行库</strong>（版本需与 SDK 匹配）。</li>
+<li>在目标机器安装海康读码器/视觉设备所需 <strong>驱动与运行库</strong>（版本需与 SDK 匹配）。<br />
+   Windows 的 Go 部署就是装 <strong>MVS</strong>（相机）+ <strong>IDMVS</strong>（读码器），x64，版本按 <code>runtime/VERSION</code> 对齐。</li>
 <li>GigE 设备注意网卡、防火墙与网段；改 IP 请使用海康官方工具/SDK，本仓库封装不再提供 <code>setIp</code>。</li>
-<li>将 SDK 提供的 <strong>DLL</strong>（若静态链仍依赖运行时）放在可执行文件同目录或系统 <code>PATH</code> 中，按官方文档为准。</li>
+<li>装完跑一次 <strong><code>hikprobe</code></strong>（见「Go 开发者 → 验收」）确认两件事：海康模块来自已安装的<br />
+   MVS/IDMVS 目录（而不是别处），以及相机能起流、软触发能收到帧。</li>
+<li>若 SDK 装在非标准位置，把对应的 DLL/<code>.so</code> 放到可执行文件同目录，或用既有的<br />
+<code>HIK_CODE_READER_DLL</code> / <code>HIK_MVCAMERA_DLL</code> 指向。</li>
 </ol>
 <h3>读码器 SDK 使用要点（与 <code>.docs</code> 开发指南 CHM 一致）</h3>
 <p>以下摘要自海康读码器 <strong>SDK 开发指南</strong>，使用本封装或直连 <code>MvCodeReader</code> 前请一并遵守：</p>
