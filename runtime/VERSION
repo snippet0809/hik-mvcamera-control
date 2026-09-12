@@ -1,0 +1,22 @@
+# 海康相机/读码器运行时来源记录
+# 规则：runtime/include 的 C ABI 头 + 本仓库的 wrapper 二进制 + 厂商运行时，
+#       三者必须来自同一次生成；缺任何一个即 ABI 错位。
+#       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
+schema              = 2
+source_repo         = https://github.com/snippet0809/hik-mvcamera-control
+source_commit       = 3d19074cae4a01a9c72ba2d6a1717de76d76333d
+source_commit_short = 3d19074
+source_date         = 2026-09-12 15:12
+wrapper_version     = 0.2.0
+
+[vendor.windows-x86_64]
+camera_package = MVS_SDK_V4_8_1_2_MVFG_V2_8_0_3_VC90_Runtime_STD.exe -> Win64_x64/
+camera_version = 工业相机SDK 4.8.1.2 Build 20260721
+reader_package = IDMVS_Win_CN_STD_5.1.0_260716.zip
+reader_version = 5.1.0
+files = 41
+bytes = 19609852
+
+[vendor.linux-x86_64]
+# 待补：需要 Linux 主机或 CI 产出 libhik_*.so 后一并生成
+status = pending
