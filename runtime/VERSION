@@ -52,12 +52,18 @@ bytes = 25625590
 #   必需——漏掉会报 0x8002000B（MV_CODEREADER_E_LOAD_LIBRARY，动态加载库失败）。
 #   **DT_NEEDED 闭包与 strings 都发现不了它们**（前者只覆盖硬依赖，后者漏掉按名字
 #   dlopen 的库），是靠真机跑用例才暴露的。
-# 注意 5：**Linux 读码器侧尚未验证通过。** 实测 MV_CODEREADER_EnumCodeReader 报
-#   0x8002000B；加载器日志显示它在找 libVirtualCodeReaderCtrl.so，而 IDMVS 5.1.0
-#   的 Linux 包里**根本没有这个文件**（Windows 侧有）。曾出现过一次成功枚举并成功
-#   取流（MvSmtLog 有完整记录：Width[4024] Height[3036] PayloadSize[12216864]，
-#   Start/Stop grabbing successfully），此后反复重试均无法复现，原因未查明。
-#   Linux 相机侧则完全正常（见下）。
-#   已排除：wrapper 构建方式（手写 g++ 与 CMake 产物同样失败）、残留进程、
-#   相机不可达、runtime 目录缺文件。未排除：相机当前状态与读码器 GigE 栈的交互
-#   （读码器用 libMVGigEVision.so，相机用 libMVGigEVisionSDK.so，是两套独立实现）。
+# 注意 5：Linux 读码器侧**当前通过**，但有一段未能解释的失败期，记录在此以免
+#   日后误判为「已知稳定」：
+#     - 加入 3 个读码器文件后的首次运行：成功（MvSmtLog 有完整取流记录：
+#       Width[4024] Height[3036] PayloadSize[12216864]，Start/Stop grabbing successfully）。
+#     - 随后一段时间：MV_CODEREADER_EnumCodeReader 连续稳定报 0x8002000B
+#       （MV_CODEREADER_E_LOAD_LIBRARY），约十余次全失败。加载器日志显示它在找
+#       libVirtualCodeReaderCtrl.so，而 IDMVS 5.1.0 的 Linux 包里**没有这个文件**
+#       （Windows 侧有）。
+#     - 之后又持续通过：连续 6 次、ctest 7/7、以及「相机用例→读码器用例」交替 4 轮，
+#       全部通过，无一次失败。
+#   **没有任何代码或环境变更能归因这段失败期**（换过 wrapper 构建方式，手写 g++ 与
+#   CMake 产物表现一致；无残留进程；相机可达；目录不缺文件）。最可能是相机 GigE
+#   控制通道在密集取流后的一段时间内状态异常——但这是推测，未证实。
+#   若要依赖 Linux 读码器，请先在目标机连续跑若干轮确认稳定，不要只看一次通过。
+#   注：读码器用 libMVGigEVision.so、相机用 libMVGigEVisionSDK.so，是两套独立实现。
