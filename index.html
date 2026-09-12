@@ -272,7 +272,7 @@
   DLLR[&quot;hik_code_reader.dll&quot;]
   DLLM[&quot;hik_mvcamera.dll&quot;]
   PY[&quot;python/hik_code_reader\n正式 wheel（读码器）&quot;]
-  G[&quot;ffi/go/hikcr\ncgo（读码器）&quot;]
+  G[&quot;hikcr / hikcv\ncgo（读码器 / 相机）&quot;]
   PYref[&quot;ffi/python\nctypes 参考（读码器）&quot;]
   NODE[&quot;ffi/node\nhik-mvcamera-control\n（读码器 + 相机）&quot;]
   SDK --&gt; CPPR --&gt; CAPI --&gt; DLLR
@@ -286,7 +286,7 @@
 <ul>
 <li><strong>构建</strong>：根目录 <strong>CMake</strong> 生成静态库、测试与 <strong>共享库</strong>（目标名见 <code>CMakeLists.txt</code>）。  </li>
 <li><strong>Python 正式包</strong>：<code>python/</code> 下 <code>build</code> 打 wheel，<strong><code>release.yml</code> 发版</strong>仅将 <strong><code>hik_code_reader.dll</code></strong> 与海康 <strong><code>lib/MvCodeReader/win64/*.lib</code></strong> 拷入 <code>hik_code_reader/_native/</code>；<strong>不把海康运行时 DLL 绑在「开发机是否安装 MVS」上</strong>。终端环境通过安装 MVS/IDMVS Runtime 或你方<strong>专用打包流水线</strong>（自托管 Runner、私有制品等）提供 <code>MvCodeReaderCtrl.dll</code> 等。  </li>
-<li><strong>Go</strong>：<code>ffi/go</code> 通过 cgo 链接已构建的 DLL/导入库；<strong>DLL 仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
+<li><strong>Go</strong>：<code>hikcr</code> / <code>hikcv</code> 通过 cgo 链接 <code>runtime/</code> 里已构建的转发库与厂商运行时，<strong>使用方无需安装 MVS/IDMVS</strong>（见下文「Go 开发者」）。<strong>转发库仍由 CMake+MSVC 编出</strong>，cgo 编译 C 片段需 <strong>GCC 类工具链</strong>（如 MinGW 的 <code>gcc</code>），勿将 <code>CC</code> 设为 <code>cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
 </ul>
 <h3>GitHub Actions 在流程中的位置</h3>
 <table>
@@ -301,7 +301,7 @@
 <tr>
 <td>发版</td>
 <td><strong><code>release.yml</code></strong></td>
-<td>打 tag <code>v*</code> → 同步 <code>pyproject</code> 版本、构建产物、GitHub Release、<strong><code>gh-pages</code></strong>（含 PEP 503 + 主页）、<code>ffi/go/v*</code> 标签。</td>
+<td>打 tag <code>v*</code> → 同步 <code>pyproject</code> 版本、构建产物、GitHub Release（含免安装运行时包）、<strong><code>gh-pages</code></strong>（含 PEP 503 + 主页）；另有 <code>build-linux</code> 作业构建并校验 Linux <code>.so</code>。</td>
 </tr>
 <tr>
 <td>文档页增量</td>
@@ -319,7 +319,7 @@
 <li><strong>改参 / GenICam</strong>：<code>startDevice</code> 第二参 <code>CodeReaderOpenParams</code> 含默认值，起流前写入；按需覆盖各成员即可。另提供与相机同构的参数读写 <code>setReaderParam</code> / <code>getReaderParam</code> / <code>runReaderCommand</code>（C ABI：<code>hik_cr_set_param</code> / <code>hik_cr_get_param</code> / <code>hik_cr_set_param_string</code> / <code>hik_cr_get_param_string</code>），可按 GenICam 节点名读写 Int/Float/Bool/Enum/String 并执行命令节点（如 <code>TriggerSoftware</code>）。</li>
 <li><strong>GigE 枚举</strong>：<code>enumDevice</code> / <code>hik_cr_enum_devices</code> 仍返回当前 <strong>导出 IP</strong>（<code>netExportIp</code>）等摘要，便于展示与日志；本库不再提供改 IP 的封装。</li>
 <li><strong>BCR 回调指针生命周期</strong>：<code>hik_cr_start_device</code> 的 BCR 回调传出的 <code>codes</code> 指针指向 SDK 保留到「下次解码」的结果，<strong>在回调返回后仍短暂有效</strong>，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。</li>
-<li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>ffi/go</code></strong>。</li>
+<li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>hikcr/</code></strong>（读码器）与 <strong><code>hikcv/</code></strong>（相机）。</li>
 </ul>
 <h2>在 GitHub 上托管分发（维护者）</h2>
 <p>GitHub Packages <strong>没有</strong>与 PyPI 对等的 Python 包仓，也<strong>没有</strong>替代 <code>go get</code> 的独立 Go Registry。本仓库采用 <strong>「Releases + GitHub Pages（PEP 503）+ Git 标签」</strong>，全部留在 GitHub 上完成托管。</p>
@@ -345,16 +345,17 @@
 </tr>
 <tr>
 <td>Go 源码模块</td>
-<td><strong>本仓库 Git</strong> + 标签 <strong><code>ffi/go/vX.Y.Z</code></strong></td>
+<td><strong>本仓库 Git</strong> + 标签 <strong><code>vX.Y.Z</code></strong>（模块根即仓库根）</td>
 <td><code>go get</code> 经官方模块代理从 GitHub 拉取</td>
 </tr>
 </tbody>
 </table>
 <h3>维护者一次性配置</h3>
 <ol>
-<li>保证 <strong><code>ffi/go/go.mod</code></strong> 第一行与 GitHub 仓库路径一致。本仓库应为：<br />
-<code>module github.com/snippet0809/hik-mvcamera-control/ffi/go</code><br />
-   （若 fork 后自用，请改为 <code>github.com/&lt;你的用户名&gt;/hik-mvcamera-control/ffi/go</code>。）</li>
+<li>保证仓库根 <strong><code>go.mod</code></strong> 第一行与 GitHub 仓库路径一致。本仓库应为：<br />
+<code>module github.com/snippet0809/hik-mvcamera-control</code><br />
+   （若 fork 后自用，请改为 <code>github.com/&lt;你的用户名&gt;/hik-mvcamera-control</code>。）<br />
+   模块根即仓库根，所以 <strong><code>vX.Y.Z</code> 标签本身就是模块版本</strong>，不再需要单独的 <code>ffi/go/v*</code> 标签。</li>
 <li>在 GitHub 打开本仓库：<strong>Settings → Pages</strong>  </li>
 <li><strong>Build and deployment</strong>：Source 选 <strong>Deploy from a branch</strong>  </li>
 <li>Branch 选 <strong><code>gh-pages</code></strong>，文件夹选 <strong><code>/(root)</code></strong>  </li>
@@ -367,9 +368,10 @@
 <code>git tag v0.0.2 &amp;&amp; git push origin v0.0.2</code>  </li>
 <li><strong>GitHub Actions</strong> 中 <strong><code>Release</code></strong> 工作流（<code>release.yml</code>）会自动：  </li>
 <li>将 <strong><code>python/pyproject.toml</code> 里的 <code>version</code></strong> 改成与标签一致（去掉 <code>v</code>，如 <code>v0.0.2</code> → <code>0.0.2</code>），再构建 <strong>Windows x64 wheel</strong>（<code>_native/</code> 内含 <code>hik_code_reader.dll</code> 与海康 <code>MvCodeReaderCtrl.lib</code> / <code>turbojpeg.lib</code>）；  </li>
-<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、Go/cgo 用 zip（含 <code>lib/MvCodeReader/win64</code>）、<code>hik_code_reader.dll</code>、<code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>；  </li>
+<li>创建/更新 <strong>GitHub Release</strong>，并上传 wheel、<code>hik_code_reader.dll</code> / <code>hik_code_reader.lib</code> 及上述厂商 <code>.lib</code>，以及<strong>免安装运行时压缩包</strong> <code>runtime/</code>；  </li>
 <li>生成 <strong>PEP 503</strong> 页面并推送到 <strong><code>gh-pages</code></strong>（与已有索引合并，保留历史版本链接）；  </li>
-<li>在同一提交上自动创建 <strong><code>ffi/go/v0.0.2</code></strong> 标签（若不存在），供 <code>go get</code> 使用。</li>
+<li>跑 <strong><code>scripts/verify-runtime.sh</code></strong>（哈希 + ABI 三重守卫）——头与二进制对不上时宁可不发版。  </li>
+<li><strong>不再</strong>创建 <code>ffi/go/v*</code> 标签：Go 模块根已抬到仓库根，<code>vX.Y.Z</code> 标签本身就是模块版本。</li>
 </ol>
 <h3>发版后维护者自检</h3>
 <ul>
@@ -416,24 +418,60 @@ print(cr.enum_devices())
 <li>若仍失败：用依赖查看工具打开 <strong><code>hik_code_reader.dll</code></strong> 核对缺失的 <code>.dll</code>；并确认 <strong>VC++ x64 运行库</strong>已安装。</li>
 </ul>
 <h3>Go 开发者</h3>
-<p><strong>模块路径</strong>（须与仓库 <code>go.mod</code> 一致）：</p>
-<pre><code class="language-text">github.com/snippet0809/hik-mvcamera-control/ffi/go
+<p><strong>模块路径</strong>（<code>go.mod</code> 在仓库根）：</p>
+<pre><code class="language-text">github.com/snippet0809/hik-mvcamera-control
 </code></pre>
-<p><strong>安装指定版本</strong>（与已发布的 <strong><code>vX.Y.Z</code></strong> / 自动打的 <strong><code>ffi/go/vX.Y.Z</code></strong> 一致）：</p>
-<pre><code class="language-bash">go get github.com/snippet0809/hik-mvcamera-control/ffi/go@v0.0.2
+<p><strong>安装</strong>：</p>
+<pre><code class="language-bash">go get github.com/snippet0809/hik-mvcamera-control@v0.2.0
 </code></pre>
 <p><strong>代码中导入</strong>：</p>
-<pre><code class="language-go">import &quot;github.com/snippet0809/hik-mvcamera-control/ffi/go/hikcr&quot;
+<pre><code class="language-go">import (
+    &quot;github.com/snippet0809/hik-mvcamera-control/hikcr&quot; // 读码器
+    &quot;github.com/snippet0809/hik-mvcamera-control/hikcv&quot; // 相机
+)
 </code></pre>
-<p><strong>说明</strong>：</p>
+<blockquote>
+<p><strong>破坏性变更</strong>：早先的模块路径是 <code>.../hik-mvcamera-control/ffi/go</code>，包在 <code>.../ffi/go/hikcr</code>。<br />
+现已抬到仓库根，导入路径变成 <code>.../hikcr</code> 与 <code>.../hikcv</code>，已有的 <code>import</code> 与 <code>require</code> 都要改。<br />
+那次搬迁同时修好了两个让 <code>go get</code> 根本编不过的问题——旧的 cgo 头路径落在模块根之外<br />
+（模块 zip 拿不到 <code>include/</code>），且参数读写直接写了 <code>cv.type</code>（<code>type</code> 是 Go 保留字）<br />
+与匿名 union 成员。<strong>旧路径任何时候都没有真正可用过。</strong></p>
+</blockquote>
+<p><strong>链接模型——无需安装 MVS/IDMVS</strong>：头文件与库都来自仓库内提交的 <code>runtime/</code><br />
+（来源与哈希见 <code>runtime/VERSION</code>、<code>runtime/MANIFEST.sha256</code>），cgo 参数直接指向它：</p>
+<pre><code class="language-go">#cgo CFLAGS: -I${SRCDIR}/../runtime/include
+#cgo windows LDFLAGS: -L${SRCDIR}/../runtime/windows-x86_64/lib -lhik_code_reader
+#cgo linux   LDFLAGS: ... -Wl,-rpath,$$ORIGIN/runtime/linux-x86_64/lib -Wl,--disable-new-dtags
+</code></pre>
+<p><strong>部署时的唯一要求：把 <code>runtime/&lt;平台&gt;/</code> 里的转发库与厂商库，统统放到可执行文件旁边。</strong></p>
 <ul>
-<li><strong>cgo</strong>：需本机可链接 <code>hik_code_reader</code>（<code>.lib</code> + 运行时 <code>dll</code>）；<strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，与用 MSVC 编出的 <code>hik_code_reader.dll</code> 不矛盾。<strong>Release</strong> 附件中的 zip 含 <code>ffi/go</code> 与 <code>include/hik_code_reader</code>，可与同版 <code>dll</code>/<code>lib</code> 一起用于集成。  </li>
-<li><strong>Windows 运行时 DLL</strong>：<code>hikcr</code> 在 cgo 加载前会按与上文 <strong>Python（Windows）</strong> 相同的规则调用 <code>AddDllDirectory</code>（<code>GENICAM_GENTL*</code>、<code>MVCAM_GENICAM_CLPROTOCOL</code>、<code>Path</code> 启发式，以及 <strong><code>HIK_CODE_READER_DLL</code></strong> 所在目录），便于解析 <code>MvCodeReaderCtrl.dll</code> 等依赖。  </li>
-<li><strong>对外 ABI（业务四件）</strong>：<code>hik_cr_enum_devices</code> / <code>hik_cr_start_device</code>（含 <code>HikCrOpenParams</code> 与 <code>HIK_CR_BCR_*</code> 登记或清除 BCR）/ <code>hik_cr_stop_device</code> / <code>hik_cr_trigger_device</code>；另有 <code>hik_cr_free_device_list</code>、<code>hik_cr_last_error_copy</code>。  </li>
-<li><strong>私有仓库</strong>：<br />
-<code>go env -w GOPRIVATE=github.com/snippet0809/*</code><br />
-  必要时配置 Git 使用 SSH 或带 token 的 HTTPS。</li>
+<li><strong>Windows</strong>：<code>runtime/windows-x86_64/bin/</code> 的<strong>全部内容</strong>拷到 exe 同目录。cgo 会把<br />
+<code>hik_code_reader.dll</code> / <code>hik_mvcamera.dll</code> 写进 exe 的 PE 导入表，ntdll 在任何 Go 代码<br />
+  运行之前就解析它们，所以<strong>只能靠同目录</strong>（<code>AddDllDirectory</code> / <code>PATH</code> 对这一步来不及，<br />
+  它们只对 SDK 后续自己迟加载的那一层有用）。</li>
+<li><strong>Linux</strong>：<code>runtime/linux-x86_64/lib/</code> 与可执行文件保持 <code>$ORIGIN</code> 相对位置即可。<br />
+  万一你把二进制挪到了别处，兜底是 <code>LD_LIBRARY_PATH=&lt;...&gt;/linux-x86_64/lib</code>。</li>
 </ul>
+<p><strong>平台与工具链</strong>：</p>
+<ul>
+<li>仅支持 <strong>windows/amd64</strong> 与 <strong>linux/amd64</strong>（<code>runtime/</code> 里的厂商二进制只有这两个）。<br />
+  其余平台会命中空包 stub，<code>go build</code> 不会失败，但调用点会报 <code>undefined</code>。</li>
+<li>需要 <code>CGO_ENABLED=1</code> 与 gcc/clang 工具链。Windows 下 <strong>C 编译器用 MinGW <code>gcc</code> 等</strong>，<br />
+  勿设 <code>CC=cl</code>（见 <code>go.dev/issue/20982</code>）。</li>
+<li><strong>cgo 不能交叉编译</strong>：要在 Linux 上跑就在 Linux 上编。</li>
+</ul>
+<p><strong>免安装验收</strong>（<code>cmd/hikprobe</code>）——只看「能枚举到设备」说明不了问题，装了 MVS 的机器上<br />
+怎么跑都会成功。探针会额外<strong>枚举本进程已加载的模块</strong>，打印任何既不在 exe 目录、也不在<br />
+系统目录下的模块：</p>
+<pre><code class="language-bash">go build -o hikprobe ./cmd/hikprobe
+# 把 runtime/windows-x86_64/bin/* 和 hikprobe.exe 放进同一个干净目录，然后：
+#   set PATH=C:\Windows\system32;C:\Windows
+#   set GENICAM_GENTL64_PATH= &amp; set MVCAM_SDK_PATH= &amp; set HIK_CODE_READER_DLL=
+#   hikprobe.exe -net=socket
+</code></pre>
+<p>期望：所有海康模块都标 <code>ok</code>（落在 exe 目录），末尾打印「免安装验收通过」。<br />
+<code>-net</code> 可选 <code>auto</code> / <code>driver</code> / <code>socket</code>；<code>socket</code> 免 GigE 过滤驱动，是不装 MVS 时的选择。</p>
+<p><strong>私有仓库</strong>：<code>go env -w GOPRIVATE=github.com/snippet0809/*</code>，必要时配置 SSH 或带 token 的 HTTPS。</p>
 <h2>GitHub Actions 摘要</h2>
 <table>
 <thead>
@@ -445,7 +483,7 @@ print(cr.enum_devices())
 <tbody>
 <tr>
 <td><strong>Release</strong>（<code>.github/workflows/release.yml</code>）</td>
-<td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）、自动 <strong><code>ffi/go/v*</code></strong> 标签。</td>
+<td>推送 <strong><code>v*.*.*</code></strong>：<strong>GitHub Release</strong> 附件（含<strong>免安装运行时包</strong> <code>runtime/</code>）、<strong>gh-pages</strong>（更新 <strong>pip</strong> 用 <code>simple/</code> 与根目录 <strong>README 页</strong>）；<code>build-linux</code> 作业另建 Linux <code>.so</code> 并跑 <code>verify-runtime.sh</code>。</td>
 </tr>
 <tr>
 <td><strong>Pages (README)</strong>（<code>.github/workflows/pages-readme.yml</code>）</td>
@@ -479,8 +517,28 @@ print(cr.enum_devices())
 <td>ctypes 参考实现（与 <code>python/hik_code_reader</code> 保持同步为佳）</td>
 </tr>
 <tr>
-<td><code>ffi/go/</code></td>
-<td>Go 子模块（<code>go.mod</code>）；包目录 <code>hikcr</code></td>
+<td><code>go.mod</code>（仓库根）</td>
+<td>Go 模块根（模块路径即仓库路径）</td>
+</tr>
+<tr>
+<td><code>hikcr/</code>、<code>hikcv/</code></td>
+<td>Go 包：读码器、相机（cgo，链接 <code>runtime/</code>）</td>
+</tr>
+<tr>
+<td><code>runtime/</code></td>
+<td><strong>随仓库提交的海康运行时</strong>（来源与哈希见 <code>runtime/VERSION</code>、<code>runtime/MANIFEST.sha256</code>）；<code>include/</code> 是 C ABI 头，<code>&lt;平台&gt;/</code> 是转发库与厂商库</td>
+</tr>
+<tr>
+<td><code>internal/hikdll/</code></td>
+<td>Windows 下登记厂商 DLL 搜索目录（<code>hikcr</code>/<code>hikcv</code> 共用）</td>
+</tr>
+<tr>
+<td><code>cmd/hikprobe/</code></td>
+<td>免安装验收探针（含已加载模块审计）</td>
+</tr>
+<tr>
+<td><code>scripts/verify-runtime.sh</code></td>
+<td>校验 <code>runtime/</code>：哈希 + ABI 三重守卫</td>
 </tr>
 <tr>
 <td><code>ffi/node/</code></td>
@@ -507,17 +565,39 @@ print(cr.enum_devices())
 <h2>构建要求</h2>
 <ul>
 <li><strong>CMake</strong> 4.0 及以上（见根目录 <code>CMakeLists.txt</code>）。</li>
-<li>支持 C++17 或项目所用特性的 <strong>MSVC</strong>（当前工程通过 <code>FetchContent</code> 拉取 <strong>GoogleTest</strong>）。</li>
+<li>支持 C++17 的 <strong>MSVC</strong>（当前工程通过 <code>FetchContent</code> 拉取 <strong>GoogleTest</strong>）。</li>
 <li><strong>Windows</strong>：默认链接 <code>lib/MvCodeReader/win64/MvCodeReaderCtrl.lib</code>；若在 32 位环境构建，需自行将 CMake 中的库路径改为 <code>win32</code> 对应文件。</li>
 </ul>
+<h3>工具链怎么选：wrapper 用 MSVC，cgo 用 MinGW</h3>
+<p><strong>构建 <code>hik_code_reader.dll</code> / <code>hik_mvcamera.dll</code> 请用 MSVC。</strong></p>
+<p>gcc(MinGW) 也能编——GNU ld 直接读海康那两个 MSVC 导入库没问题，导出符号与 MSVC 逐字节一致<br />
+（13/13 未修饰同名）。但<strong>默认配置下它会静默产生错误数据</strong>：海康 <code>PixelType.h</code> 用<br />
+<code>#ifdef WIN32</code> 在两种定义间切换，而 MinGW 只定义 <code>_WIN32</code>、不定义 <code>WIN32</code>，于是<br />
+<code>MvGvspPixelType</code> 从 4 字节变 8 字节，<code>MV_FRAME_OUT_INFO_EX</code> 之后所有字段整体错位——<br />
+<code>width</code>/<code>height</code> 恰好还对（它们在结构体开头），但 <code>frameLen</code> 读成 0、<code>frameNum</code> 是垃圾值。</p>
+<p>要修得加两个定义（CMake 的 <code>if(MINGW)</code> 分支已代劳）：<code>WIN32</code>（让枚举回到 4 字节），<br />
+以及 <code>-D__int64="long long"</code>（<code>WIN32</code> 分支里写的是 MSVC 专有的 <code>typedef __int64 int64_t;</code>，<br />
+MinGW 的 gcc 不认）。另需去掉产物名的 <code>lib</code> 前缀、并把 GCC 运行库静态并入。</p>
+<p>即便修好，这个位置仍是脆的：它依赖厂商头的 ifdef 写法，海康更新 SDK 可能重新错位。<br />
+<code>tests/mvcamera_test.cpp</code> 里有逐帧元数据断言专门守这一点（校验 <code>frameLen</code> 与 <code>宽x高</code> 自洽），<br />
+但<strong>选与厂商相同的工具链仍然更省心</strong>——wrapper 很少重新编译，MSVC 构建慢一点也不重要。</p>
+<p><strong>cgo 则必须用 MinGW</strong>：Go 在 Windows 上的 cgo 不能用 <code>cl</code>（见 <code>go.dev/issue/20982</code>），<br />
+所以 Go 使用者无论如何都要装 gcc 类工具链。两个工具链并存是正常状态，不是妥协。</p>
 <h2>构建与测试</h2>
-<pre><code class="language-powershell">cmake -S . -B build -G &quot;Visual Studio 17 2022&quot; -A x64
-cmake --build build --config Release
-ctest --test-dir build -C Release
+<pre><code class="language-powershell"># MSVC（推荐）。生成器名跟本机 VS 版本走，用 cmake --help 查：
+#   VS 2026 -&gt; &quot;Visual Studio 18 2026&quot;；VS 2022 -&gt; &quot;Visual Studio 17 2022&quot;
+cmake -S . -B build-vs -G &quot;Visual Studio 18 2026&quot; -A x64
+cmake --build build-vs --config Release
+ctest --test-dir build-vs -C Release
 </code></pre>
-<p><strong>无 VS2022 生成器时</strong>可用 Ninja（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境，产物为 <code>build/hik_code_reader.dll</code>）：</p>
-<pre><code class="language-powershell">cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+<pre><code class="language-powershell"># MinGW（可用，但请先读上文的限制）
+cmake -S . -B build-mingw -G Ninja -DCMAKE_BUILD_TYPE=Release `
+      -DCMAKE_C_COMPILER=D:/mingw64/bin/gcc.exe -DCMAKE_CXX_COMPILER=D:/mingw64/bin/g++.exe
+cmake --build build-mingw
+</code></pre>
+<p><strong>用 MSVC 但想走 Ninja</strong>（需已安装 Ninja 且在同一 shell 中加载 MSVC 环境）：</p>
+<pre><code class="language-powershell">cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-ninja
 </code></pre>
 <p>首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。</p>
 <p>产物说明：</p>
