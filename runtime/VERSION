@@ -4,20 +4,22 @@
 #       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
 schema              = 2
 source_repo         = https://github.com/snippet0809/hik-mvcamera-control
-source_commit       = 6e034235b721bece1024abe11cfbee5061fb9404
-source_commit_short = 6e03423
-source_date         = 2026-09-12 15:51
+source_commit       = fa8aba92993dfb7325392d91b199af9de7261a51
+source_commit_short = fa8aba9
+source_date         = 2026-09-12 16:31
 wrapper_version     = 0.2.0
 
-# wrapper（hik_code_reader / hik_mvcamera）为 **/MT 静态链接 CRT**：
-#   这两个 DLL 是随 runtime/ 分发的，若用默认的 /MD 会让使用方额外依赖
-#   MSVCP140 / VCRUNTIME140 —— 微软 VC++ 可再发行组件包里的文件，干净工控机上
-#   不一定有，会把「免安装」变成「不用装海康的，但要装微软的」。
-#   实测确认该依赖是本工程自己引入的：本目录内除这两个以外的每个 DLL（海康的全部
-#   在内）都不需要 VC14，它们用的是 MSVCR120 / MSVCP90 等更老的 CRT，已随包带上。
-#   安全性：导出的 C ABI 全是 POD 与裸指针，无 C++ 对象跨 DLL 边界。
-#   只作用于 _shared 目标；{target} 静态库仅测试用、不随包分发，保持 /MD。
-# 工具链：Visual Studio Community 2026 (VS 18)，MSBuild 18.9.1。
+# ── wrapper 构建方式 ────────────────────────────────────────────────────────
+# Windows：MSVC /MT（静态链接 CRT）。
+#   这两个 DLL 随 runtime/ 分发，若用默认 /MD 会让使用方额外依赖 MSVCP140 /
+#   VCRUNTIME140（微软 VC++ 可再发行组件包里的文件，干净工控机上不一定有），
+#   把「免安装」变成「不用装海康的，但要装微软的」。
+#   实测该依赖完全是本工程自己引入的：本目录内除这两个以外的每个 DLL（海康的
+#   全部在内）都不需要 VC14，用的是 MSVCR120 / MSVCP90 等更老的 CRT，已随包带上。
+#   只作用于 _shared 目标；静态库仅测试用、不随包分发，保持 /MD。
+#   工具链：Visual Studio Community 2026 (VS 18)，MSBuild 18.9.1。
+# Linux：gcc + -fPIC -shared，INSTALL_RPATH=$ORIGIN、--disable-new-dtags
+#   （DT_RPATH 而非 DT_RUNPATH：后者不被传递依赖继承）、-Bsymbolic、--no-undefined。
 
 [vendor.windows-x86_64]
 camera_package = MVS_SDK_V4_8_1_2_MVFG_V2_8_0_3_VC90_Runtime_STD.exe -> Win64_x64/
@@ -28,5 +30,34 @@ files = 41
 bytes = 19925244
 
 [vendor.linux-x86_64]
-# 待补：需 Linux 主机或 CI 产出 libhik_*.so 后一并生成
-status = pending
+camera_package = MvCamCtrlSDK_Runtime-4.8.1_x86_64_20260729.tar.gz
+camera_version = 4.8.1.2
+reader_package = IDMVS_CN_STD_5.1.0_x86_64_20260716.tar.gz
+reader_version = 5.1.0
+files = 19
+bytes = 25625590
+# 注意 1：**必须在 Linux 上解压这两个 tar.gz**。在 Windows 上用 7-Zip 解包会把
+#   符号链接（libMvCameraControl.so -> libMvCameraControl.so.4.8.1.2）写成 0 字节
+#   空文件，链接时报一堆 undefined reference。踩过一次。
+# 注意 2：本目录只放**真实文件**、不放符号链接——仓库在 Windows 检出时符号链接会
+#   变成普通文本文件而失效。这里按 SONAME 命名存放真实副本（实测所有 DT_NEEDED
+#   都只引用 SONAME 名，不引用带版本号的名字），因此不需要符号链接。
+# 注意 3：GigE 走 MvFGProducerGEV.cti（不是 MvProducerGEV.cti —— 后者在包里无人引用）。
+#   已排除：CML/CXP/XoF 三个非 GigE producer、libMVRender（硬依赖 libGL/libX11）、
+#   libMediaProcess/libFormatConversion（像素转换）、libMvUsb3vTL（USB3）、
+#   libMvLCProducer、libMvProducerVIR。
+# 注意 4：libCLProtocol/CLAllSerial/CLSerCOM/GenCP 看似是 Camera Link 专用，但它们
+#   出现在 libGCBase/libMVGigEVisionSDK 的 DT_NEEDED 里，**必须带**，否则加载失败。
+#   同理 libMvSmtDevCtrl.so / libMVGigEVision.so / CodeReaderSdkConfig.ini 是读码器
+#   必需——漏掉会报 0x8002000B（MV_CODEREADER_E_LOAD_LIBRARY，动态加载库失败）。
+#   **DT_NEEDED 闭包与 strings 都发现不了它们**（前者只覆盖硬依赖，后者漏掉按名字
+#   dlopen 的库），是靠真机跑用例才暴露的。
+# 注意 5：**Linux 读码器侧尚未验证通过。** 实测 MV_CODEREADER_EnumCodeReader 报
+#   0x8002000B；加载器日志显示它在找 libVirtualCodeReaderCtrl.so，而 IDMVS 5.1.0
+#   的 Linux 包里**根本没有这个文件**（Windows 侧有）。曾出现过一次成功枚举并成功
+#   取流（MvSmtLog 有完整记录：Width[4024] Height[3036] PayloadSize[12216864]，
+#   Start/Stop grabbing successfully），此后反复重试均无法复现，原因未查明。
+#   Linux 相机侧则完全正常（见下）。
+#   已排除：wrapper 构建方式（手写 g++ 与 CMake 产物同样失败）、残留进程、
+#   相机不可达、runtime 目录缺文件。未排除：相机当前状态与读码器 GigE 栈的交互
+#   （读码器用 libMVGigEVision.so，相机用 libMVGigEVisionSDK.so，是两套独立实现）。

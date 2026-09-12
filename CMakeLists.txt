@@ -116,6 +116,30 @@ function(hik_wrapper_library target prefix src_dir sdk_inc sdk_lib)
         target_link_options(${target}_shared PRIVATE
             -static-libgcc -static-libstdc++ -static)
     endif()
+    # Linux：产物是 libhik_*.so（lib 前缀在这里正是要的，别去掉），与厂商 .so 扁放在
+    # runtime/linux-x86_64/lib 里，靠 $ORIGIN 找邻居。
+    #
+    # -Wl,--disable-new-dtags 强制落地 DT_RPATH 而不是 DT_RUNPATH：
+    #   DT_RUNPATH 只在对象自身的直接 DT_NEEDED 上生效、**不被传递依赖继承**，
+    #   所以只管得到 exe→wrapper，管不到 wrapper→厂商 .so 那一跳；
+    #   DT_RPATH 会被继承，且优先于 LD_LIBRARY_PATH，用户环境里杂散的
+    #   LD_LIBRARY_PATH 无法遮蔽随包库。
+    # 另注：厂商自己的库带 RPATH=./ 或 Jenkins 绝对路径，都不可依赖。
+    # -Wl,--no-undefined 让「漏链厂商 .so」在构建期就暴露，而不是等到运行时。
+    # 刻意**不设 SOVERSION**：设了会产出 libhik_*.so.0 这个真实文件 + 一个同名符号链接，
+    # 而 runtime/ 是要提交进仓库的——符号链接在 Windows 检出时会变成普通文本文件而失效
+    # （踩过：用 7-Zip 解厂商 tar.gz 时符号链接变成 0 字节文件，链接期炸出一堆 undefined）。
+    # 本包是随应用分发的运行时目录、不是装进系统库路径的共享库，不需要版本化 soname。
+    if(UNIX)
+        set_target_properties(${target}_shared PROPERTIES
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH "$ORIGIN")
+        target_compile_options(${target}_shared PRIVATE -fvisibility=hidden)
+        target_link_options(${target}_shared PRIVATE
+            -Wl,--disable-new-dtags
+            -Wl,-Bsymbolic
+            -Wl,--no-undefined)
+    endif()
     # 见文件顶部 MINGW 处关于 WIN32 的说明——不定义它会导致海康结构体布局错位。
     target_include_directories(${target}_shared
         PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -125,15 +149,33 @@ function(hik_wrapper_library target prefix src_dir sdk_inc sdk_lib)
     set_target_properties(${target}_shared PROPERTIES OUTPUT_NAME ${target})
 endfunction()
 
-# SDK 导入/静态库按目标架构选择 win64/win32（仓库两者均预置）。
-if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set(HIK_SDK_ARCH win32)
+# SDK 库与头：按平台选择。
+#
+# Windows：导入库按目标架构选 win64/win32（仓库两者均预置）。
+# Linux：厂商库来自随仓库提交的 runtime/linux-x86_64/lib（真实文件，非符号链接），
+#        头部复用同一份海康头——它们在非 _WIN32 下有自己的分支，Linux 不需要另配。
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(HIK_SDK_ARCH win32)
+    else()
+        set(HIK_SDK_ARCH win64)
+    endif()
+    set(HIK_CR_SDK_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCodeReader/${HIK_SDK_ARCH}/MvCodeReaderCtrl.lib)
+    set(HIK_CV_SDK_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCamera/${HIK_SDK_ARCH}/MvCameraControl.lib)
+elseif(UNIX AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    set(HIK_LINUX_RUNTIME_LIB ${CMAKE_CURRENT_SOURCE_DIR}/runtime/linux-x86_64/lib)
+    find_library(HIK_CR_SDK_LIB NAMES MvCodeReaderCtrl
+                 PATHS ${HIK_LINUX_RUNTIME_LIB} NO_DEFAULT_PATH REQUIRED)
+    find_library(HIK_CV_SDK_LIB NAMES MvCameraControl
+                 PATHS ${HIK_LINUX_RUNTIME_LIB} NO_DEFAULT_PATH REQUIRED)
 else()
-    set(HIK_SDK_ARCH win64)
+    message(FATAL_ERROR
+        "hik-mvcamera-control: 只支持 Windows x86/x64 与 Linux x86_64"
+        "（当前 ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}）")
 endif()
 
 # -----------------------------------------------------------------------------
-# 读码器封装（hik_cr_* C ABI → hik_code_reader.dll，链 MvCodeReaderCtrl.lib）
+# 读码器封装（hik_cr_* C ABI → hik_code_reader.dll / libhik_code_reader.so）
 # -----------------------------------------------------------------------------
 set(HIK_CODE_READER_SOURCES
     src/code_reader/c_api.cpp
@@ -145,11 +187,11 @@ set(HIK_CODE_READER_SOURCES
 
 hik_wrapper_library(hik_code_reader HIK_CR src/code_reader
     ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCodeReader
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCodeReader/${HIK_SDK_ARCH}/MvCodeReaderCtrl.lib
+    ${HIK_CR_SDK_LIB}
     ${HIK_CODE_READER_SOURCES})
 
 # -----------------------------------------------------------------------------
-# 相机封装（hik_cv_* C ABI → hik_mvcamera.dll，链 MvCameraControl.lib）
+# 相机封装（hik_cv_* C ABI → hik_mvcamera.dll / libhik_mvcamera.so）
 # -----------------------------------------------------------------------------
 set(HIK_MVCAMERA_SOURCES
     src/mvcamera/c_api.cpp
@@ -161,7 +203,7 @@ set(HIK_MVCAMERA_SOURCES
 
 hik_wrapper_library(hik_mvcamera HIK_CV src/mvcamera
     ${CMAKE_CURRENT_SOURCE_DIR}/include/MvCamera
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/MvCamera/${HIK_SDK_ARCH}/MvCameraControl.lib
+    ${HIK_CV_SDK_LIB}
     ${HIK_MVCAMERA_SOURCES})
 
 # -----------------------------------------------------------------------------
@@ -182,9 +224,31 @@ target_link_libraries(all_tests PRIVATE
     GTest::gtest_main
 )
 
+# Linux：测试可执行文件直接从厂商 .so 取符号（DT_NEEDED），而厂商 .so 放在随包运行时
+# 目录里。给它写死 BUILD_RPATH，这样 `ctest` 开箱即用，不必先设 LD_LIBRARY_PATH。
+# 仅构建期 rpath——测试可执行文件不随包分发，不需要 INSTALL_RPATH。
+#
+# **必须同时加 -Wl,--disable-new-dtags**：CMake 在 Linux 上默认生成 DT_RUNPATH，
+# 而 DT_RUNPATH 不被传递依赖继承（只在对象自身的直接 DT_NEEDED 上生效）。
+# 少了这个标志，all_tests 能加载到 libMvCodeReaderCtrl.so，但后者自己 dlopen 的
+# libMvSmtDevCtrl.so 就找不到了——实测表现为读码器枚举报 0x8002000B
+# （MV_CODEREADER_E_LOAD_LIBRARY：动态加载库失败），而相机用例照常通过。
+# 换成 DT_RPATH 后会被继承，问题消失。
+if(UNIX)
+    set_target_properties(all_tests PROPERTIES
+        BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}/runtime/linux-x86_64/lib")
+    target_link_options(all_tests PRIVATE -Wl,--disable-new-dtags)
+endif()
+
 # 向 CTest 注册每个 TEST() 用例，便于 ctest -R 筛选、IDE 里单独跑某条测试。
 # PRE_TEST：在运行 ctest 时再发现用例；若用 POST_BUILD，构建阶段会执行 all_tests.exe，
 # 链了海康库时易因缺运行库报 0xc0000135（STATUS_DLL_NOT_FOUND），CI 仅 cmake --build 也会失败。
+#
+# enable_testing() 是必须的：没有它 CTestTestfile.cmake 会是空文件，ctest 直接报
+# "No tests were found!!!"——`gtest_discover_tests` 生成的发现脚本不会被引用。
+# 这个仓库此前一直缺这一行，所以 `ctest` 从来没真正跑起来过（Windows / Linux 都一样），
+# 只有直接执行 all_tests 才有效。
+enable_testing()
 include(GoogleTest)
 gtest_discover_tests(all_tests DISCOVERY_MODE PRE_TEST)
 
