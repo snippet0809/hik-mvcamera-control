@@ -84,6 +84,17 @@ void stopDevice(const std::string &sn) {
     }
 }
 
+void stopGrabbing(const std::string &sn) {
+    std::lock_guard<std::mutex> lock(g_device_mutex);
+    CodeReader *cr = findDevice(sn);
+    if (!cr || cr->status != CodeReaderStatus::Grabbing) {
+        return;
+    }
+    checkSdk<MV_CODEREADER_OK>(MV_CODEREADER_StopGrabbing(cr->handle), "MV_CODEREADER_StopGrabbing");
+    // 停在 Open：下次 startDevice 走 applyOpenParams + grabbing 快路径，省掉重建句柄 + OpenDevice。
+    cr->status = CodeReaderStatus::Open;
+}
+
 void startDevice(const std::string &sn, const CodeReaderOpenParams &params,
                  const std::optional<CodeReaderBcrCallback> &onBcrCodes) {
     std::lock_guard<std::mutex> lock(g_device_mutex);

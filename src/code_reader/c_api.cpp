@@ -211,6 +211,13 @@ HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8) {
     return wrap([&] { stopDevice(serial_utf8); });
 }
 
+HIK_CR_API HikCrResult hik_cr_stop_grabbing(const char *serial_utf8) {
+    if (!nonNull(serial_utf8, "serial_utf8")) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] { stopGrabbing(serial_utf8); });
+}
+
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8) {
     if (!nonNull(serial_utf8, "serial_utf8")) {
         return HIK_CR_ERR_INVALID_ARG;
@@ -319,6 +326,30 @@ HIK_CR_API HikCrResult hik_cr_get_param_string(const char *serial_utf8, const ch
         }
         if (!copyTo(out_utf8, buf_size, std::get<std::string>(v))) {
             throw std::runtime_error("hik_cr_get_param_string copy");
+        }
+    });
+}
+
+HIK_CR_API HikCrResult hik_cr_get_bcr_image(const char *serial_utf8, HikCrBcrImageInfo *out_info,
+                                            unsigned char *out_data, size_t out_cap) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !out_info) {
+        return HIK_CR_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        std::shared_ptr<KeptBcrImage> img = getLastBcrImage(serial_utf8);
+        if (!img || img->data.empty()) {
+            throw std::runtime_error("该读码器尚未读到条码（无 BCR 图像）");
+        }
+        out_info->width = img->width;
+        out_info->height = img->height;
+        out_info->pixel_type = img->pixelType;
+        out_info->frame_len = static_cast<int>(img->data.size());
+        if (out_data) {
+            if (out_cap < img->data.size()) {
+                err("out_cap 小于 frame_len");
+                throw std::runtime_error("hik_cr_get_bcr_image: out_cap 不足");
+            }
+            std::memcpy(out_data, img->data.data(), img->data.size());
         }
     });
 }

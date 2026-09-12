@@ -7,8 +7,10 @@
 #include "../common/sdk_util.h"
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 enum class CodeReaderStatus { Connected, Open, Grabbing };
 
@@ -19,6 +21,18 @@ enum class CodeReaderStatus { Connected, Open, Grabbing };
  * registerImageCallbackForSerial / registerFrameCallbackForSerial 等内部函数约定「调用方已持有本锁」。
  */
 extern std::mutex g_device_mutex;
+
+/** 最近一次 BCR 成功的读码帧图（按序列号常驻，供 hik_cr_get_bcr_image 拉取）。 */
+struct KeptBcrImage {
+    std::vector<unsigned char> data;
+    int width = 0;
+    int height = 0;
+    int pixelType = 0;  // MvCodeReaderGvspPixelType
+};
+
+std::shared_ptr<KeptBcrImage> getLastBcrImage(const std::string &sn);
+void setLastBcrImage(const std::string &sn, const unsigned char *data, size_t len,
+                     int width, int height, int pixelType);
 
 class CodeReader {
 public:

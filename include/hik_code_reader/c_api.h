@@ -87,6 +87,14 @@ typedef struct HikCrParamValue {
     };
 } HikCrParamValue;
 
+/** 最近一次 BCR 成功的读码帧图信息（供 `hik_cr_get_bcr_image` 拉取）。 */
+typedef struct HikCrBcrImageInfo {
+    int width;
+    int height;
+    int pixel_type;  // MvCodeReaderGvspPixelType
+    int frame_len;   // 图像数据字节数
+} HikCrBcrImageInfo;
+
 /** `hik_cr_start_device` 的 BCR 行为（对应 C++ `std::optional` 第三参）。 */
 #define HIK_CR_BCR_KEEP 0   /**< 不改动已登记的 BCR */
 #define HIK_CR_BCR_SET 1    /**< 设置 `bcr_cb`（须非 NULL） */
@@ -127,6 +135,15 @@ HIK_CR_API HikCrResult hik_cr_start_device(const char *serial_utf8, const HikCrO
                                            int bcr_action, HikCrBcrCallback bcr_cb, void *bcr_user_data);
 
 HIK_CR_API HikCrResult hik_cr_stop_device(const char *serial_utf8);
+
+/**
+ * 停流但保留连接（不 CloseDevice）；未开流时为空操作。
+ * 与 `hik_cr_stop_device` 的区别：设备仍被本进程占用，下次 `hik_cr_start_device` 只重写
+ * `open_params` 并重新 StartGrabbing，省掉重建句柄 + OpenDevice 的开销。
+ * 需要把设备让给外部软件（如 IDMVS）时仍用 `hik_cr_stop_device` 彻底释放。
+ */
+HIK_CR_API HikCrResult hik_cr_stop_grabbing(const char *serial_utf8);
+
 HIK_CR_API HikCrResult hik_cr_trigger_device(const char *serial_utf8);
 
 /**
@@ -146,6 +163,14 @@ HIK_CR_API HikCrResult hik_cr_set_param_string(const char *serial_utf8, const ch
                                                const char *value);
 HIK_CR_API HikCrResult hik_cr_get_param_string(const char *serial_utf8, const char *name,
                                                char *out_utf8, size_t buf_size);
+
+/**
+ * 取最近一次 BCR 成功的读码帧图（返回拷贝，避免回调缓冲失效）。
+ * `out_data` 为 NULL 时仅回填 `out_info`（先查长度再分配缓冲）；
+ * `out_cap` 不足或该序列号未读到过条码时报错。
+ */
+HIK_CR_API HikCrResult hik_cr_get_bcr_image(const char *serial_utf8, HikCrBcrImageInfo *out_info,
+                                            unsigned char *out_data, size_t out_cap);
 
 /** 失败信息（线程局部）；返回所需缓冲（含 '\\0'）或已写入长度（不含 '\\0'）。 */
 HIK_CR_API size_t hik_cr_last_error_copy(char *out_utf8, size_t buf_size);

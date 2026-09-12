@@ -2,3 +2,12 @@
 *.go   text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
+
+# 提交进仓库的海康运行时二进制：一律不做文本转换，也不参与 diff。
+# 厂商的 .ini/.properties 是带 BOM 的文本，core.autocrlf 下会被 CRLF 改写从而破坏哈希。
+runtime/** -text
+*.dll      binary
+*.lib      binary
+*.so       binary
+*.so.*     binary
+*.cti      binary

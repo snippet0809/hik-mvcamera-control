@@ -46,6 +46,9 @@ void startDevice(const std::string &sn, const CodeReaderOpenParams &params = {},
 
 void stopDevice(const std::string &sn);
 
+/** 停流但保留连接（不 CloseDevice）；未开流时为空操作。 */
+void stopGrabbing(const std::string &sn);
+
 /** TriggerSoftware；须已 startDevice 且处于取流。 */
 void triggerDevice(const std::string &sn);
 
