@@ -18,13 +18,15 @@
             #define MV_CODEREADERCTRL_API __declspec(dllimport)
         #endif
     #else
-        #ifndef __stdcall
-            #define __stdcall
-        #endif
+		#ifndef __stdcall
+			#define __stdcall
+		#endif
 
-        #ifndef MV_CODEREADERCTRL_API
-            #define  MV_CODEREADERCTRL_API
-        #endif
+		#if defined(MV_CODEREADERCTRL_EXPORTS)
+			#define  MV_CODEREADERCTRL_API __attribute__((visibility("default")))
+		#else
+			#define  MV_CODEREADERCTRL_API
+		#endif
     #endif
 
 #endif
@@ -59,6 +61,7 @@ extern "C" {
                                                      8bits  8bits  8bits  8bits 
  ************************************************************************/
 MV_CODEREADERCTRL_API unsigned int __stdcall MV_CODEREADER_GetSDKVersion();
+MV_CODEREADERCTRL_API const char* __stdcall MV_CODEREADER_GetSDKVersionEx();
 
 /************************************************************************
  *  @fn     MV_CODEREADER_EnumDevices()
@@ -121,6 +124,21 @@ MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_EnumCodeReader(IN OUT MV_CODER
 MV_CODEREADERCTRL_API bool __stdcall MV_CODEREADER_IsDeviceAccessible(IN MV_CODEREADER_DEVICE_INFO* pstDevInfo, IN unsigned int nAccessMode);
 
 /************************************************************************
+*  @fn     MV_CODEREADER_IsDeviceNeedAuthorization()
+*  @brief  设备是否需要鉴权
+*  @param  pstDevInfo             [IN]           设备信息结构体
+*  @param  pbNeedAuth             [IN]           鉴权标记
+*  @return 成功，返回MV_CODEREADER_OK；错误，返回错误码 
+
+*  @fn     MV_CODEREADER_IsDeviceNeedAuthorization()
+*  @brief  Is the device need authorization
+*  @param  pstDevInfo             [IN]           Device Information Structure
+*  @param  nAccessMode            [IN]           Access Right
+*  @return Success, return MV_CODEREADER_OK. Failure, return error code
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_IsDeviceNeedAuth(IN MV_CODEREADER_DEVICE_INFO* pstDevInfo, IN OUT bool* pbNeedAuth);
+
+/************************************************************************
  *  @fn     MV_CODEREADER_CreateHandle()
  *  @brief  创建设备句柄（支持虚拟相机）
  *  @param  handle                 [IN][OUT]      句柄地址
@@ -163,11 +181,58 @@ MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_CreateHandleBySerialNumber(IN 
  ************************************************************************/
 MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_DestroyHandle(IN void * handle);
 
+
+/************************************************************************
+*  @fn      MV_CODEREADER_ActivateDevice()
+*  @brief   激活设备
+*  @param   handle                    [IN]             设备句柄
+*  @param   pUserName                 [IN]             用户名，用户名为1-16字节字符串
+*  @param   pPassword                 [IN]             密码，密码为1-32字节字符串
+*  @return  成功，返回MV_SMTDEVCTRL_OK；错误，返回错误码！
+
+*  @fn      MV_SMTDEVCTRL_ActivateDevice()
+*  @brief
+*  @param
+*  @return
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_ActivateDevice(IN void* handle, IN char* pUserName, IN char* pPassword);
+
+/************************************************************************
+*  @fn      MV_CODEREADER_DeactivateDevice()
+*  @brief   设备恢复未激活状态
+*  @param   handle                    [IN]             设备句柄
+*  @param   pUserName                 [IN]             用户名，用户名为1-16字节字符串
+*  @param   pPassword                 [IN]             密码，密码为1-32字节字符串
+*  @return  成功，返回MV_SMTDEVCTRL_OK；错误，返回错误码！
+
+*  @fn      MV_SMTDEVCTRL_DeactivateDevice()
+*  @brief
+*  @param
+*  @return
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_DeactivateDevice(IN void* handle, IN char* pUserName, IN char* pPassword);
+
+/************************************************************************
+*  @fn      MV_CODEREADER_DeviceAuthorization()
+*  @brief   设备鉴权(设备激活后、连接前进行)
+*  @param   handle                    [IN]             设备句柄
+*  @param   enDeviceAuthType          [IN]             设备鉴权类型
+*  @param   pUserName                 [IN]             用户名，用户名为1-16字节字符串
+*  @param   pPassword                 [IN]             密码，密码为1-32字节字符串
+*  @return  成功，返回MV_SMTDEVCTRL_OK；错误，返回错误码！
+
+*  @fn      MV_GIGE_DeviceAuthorization()
+*  @brief
+*  @param
+*  @return
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_DeviceAuthorization(IN void* handle, IN MV_CODEREADER_DEVICE_AUTH_TYPE enDeviceAuthType, IN char* pUserName, IN char* pPassword);
+
 /**
 *  @~chinese
 *  @brief  配置区域地址和值（读码相机专用）
 *  @param  handle                    [IN]            相机句柄
-*  @param  nAreaAddress              [IN]            区域地址
+*  @param  nAreaAddress               [IN]            区域地址
 *  @param  nAreaCode                 [IN]            地区值码
 *  @return 成功，返回MV_OK；错误，返回错误码
 ************************************************************************/
@@ -186,6 +251,22 @@ MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_SetAreaInfoConfig(IN void* han
  ************************************************************************/
 MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_OpenDevice(IN void* handle);
 
+/************************************************************************
+*  @fn     MV_CODEREADER_OpenDevice()
+*  @brief  打开设备 （支持虚拟相机）
+*  @param  handle                 [IN]          句柄
+*  @param  pUserName                 [IN]             用户名，用户名为1-16字节字符串
+*  @param  pPassword                 [IN]             密码，密码为1-32字节字符串
+
+*  @return 成功，返回MV_CODEREADER_OK；错误，返回错误码
+
+*  @fn     MV_CODEREADER_OpenDevice()
+*  @brief  Open Device(support virtual camera)
+*  @param  handle                 [IN]          Handle
+*  @return Success, return MV_CODEREADER_OK. Failure, return error code
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_OpenDeviceEx(IN void* handle, IN char* pUserName, IN char* pPassword);
+
 /***********************************************************************
  *  @fn         MV_CODEREADER_CloseDevice()
  *  @brief      关闭相机 （支持虚拟相机）
@@ -198,6 +279,46 @@ MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_OpenDevice(IN void* handle);
  *  @return     Success, return MV_CODEREADER_OK. Failure, return error code
  ***********************************************************************/
 MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_CloseDevice(IN void* handle);
+
+/** @fn    MV_CODEREADER_ChangePassword
+*  @brief  修改设备密码(连接相机后才允许修改密码)
+*  @param  handle               [IN]    - 句柄
+*  @param  pUserNam             [IN]    - 用户名，用户名为1-16字节字符串
+*  @param  pOldPassword         [IN]    - 旧密码，密码为1-32字节字符串
+*  @param  pNewPassword         [IN]    - 新密码，密码为1-32字节字符串
+*  @return 成功，返回MV_SMTDEVCTRL_OK；失败，返回错误码
+*/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_ChangePassword(IN void* handle,IN char* pUserName,IN char* pOldPassword,IN char* pNewPassword);
+
+/** @fn    MV_CODEREADER_GetDeviceCode
+*  @brief  获取设备码信息，密码重置前置操作
+*  @param  handle               [IN]    - 句柄
+*  @param  pBuffer              [IN][OUT] - 作为返回值使用，保存读到的设备码（xml格式）
+*  @param  nBufferSize          [IN]      - 传入pBuffer的尺寸
+*  @param  pnDeviceCodeLen      [IN]      - 传入pBuffer的尺寸
+*  @return 成功，返回MV_SMTDEVCTRL_OK；失败，返回错误码
+*/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_GetDeviceCode(IN void* handle, IN OUT void *pBuffer, IN int64_t nBufferSize, IN OUT int64_t* pnDeviceCodeLen);
+
+/**	@func name 	 MV_CODEREADER_ResetPassword
+*	@func brief	 密码重置,重置所有用户密码
+*  @param  handle               [IN]    - 句柄
+*  @param  pUserNam             [IN]    - 用户名，用户名为1-16字节字符串
+*  @param  pNewPassword         [IN]    - 新密码，密码为1-32字节字符串
+*  @param  pResetword           [IN]    - OA生成的重置字符串，长度为MV_CODEREADER_RESETCOMMAND_LEN
+*	@return	     成功返回MV_SMTDEVCTRL_OK，失败返回对应的错误码 
+**/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_ResetPassword(IN void* handle, IN char* pNewPassword, IN char* pResetword);
+
+/**	@func name 	 MV_CODEREADER_GetDeviceAuthFailedInfo
+*	@func brief	 获取设备鉴权失败信息
+*  @param  handle               [IN]    - 句柄
+*  @param  pUserNam             [IN]    - 用户名，用户名为1-16字节字符串
+*  @param  pNewPassword         [IN]    - 新密码，密码为1-32字节字符串
+*  @param  chResetCommand       [IN]    - OA生成的重置口令
+*	@return	     成功返回MV_SMTDEVCTRL_OK，失败返回对应的错误码
+**/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_GetDeviceAuthFailedInfo(IN void* handle, IN OUT MV_CODEREADER_AUTH_FAILED_INFO* pstAuthFailedInfo);
 
 /************************************************************************/
 /* 针对注册图像回调和获取帧图像相关接口                            */
@@ -647,6 +768,23 @@ MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_SetBoolValue(IN void* handle,I
  *  @return Success, return MV_CODEREADER_OK. Failure, return error code
  ************************************************************************/
 MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_GetStringValue(IN void* handle,IN const char* strKey, IN OUT MV_CODEREADER_STRINGVALUE *pStringValue);
+
+/************************************************************************
+*  @fn     MV_CODEREADER_GetStringValueEx()
+*  @brief  获取String属性值(支持外部传入Buffer)
+*  @param  void* handle                       [IN]        相机句柄
+*  @param  char* strKey                       [IN]        属性键值
+*  @param  MVCC_STRINGVALUE *pStringValue     [IN][OUT]   返回给调用者有关相机属性结构体指针
+*  @return 成功,返回MV_CODEREADER_OK,失败,返回错误码
+
+*  @fn     MV_CODEREADER_GetStringValue()
+*  @brief  Get String value
+*  @param  void* handle                       [IN]        Handle
+*  @param  char* strKey                       [IN]        Key value
+*  @param  MVCC_STRINGVALUE *pStringValue     [IN][OUT]   Structure pointer of camera features
+*  @return Success, return MV_CODEREADER_OK. Failure, return error code
+************************************************************************/
+MV_CODEREADERCTRL_API int __stdcall MV_CODEREADER_GetStringValueEx(IN void* handle, IN const char* strKey, IN OUT MV_CODEREADER_STRINGVALUE_EX *pStringValue);
 
 /************************************************************************
  *  @fn     MV_CODEREADER_SetStringValue()

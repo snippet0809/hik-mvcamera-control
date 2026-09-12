@@ -111,6 +111,8 @@
 #define MV_CODEREADER_E_UPG_SPACE_DISMATCH                  0x8002047D  ///< 空间不匹配
 #define MV_CODEREADER_E_UPG_MEM_DISMATCH                    0x8002047E  ///< 内存不匹配
 #define MV_CODEREADER_E_UPG_NET_TRANS_ERROR                 0x8002047F  ///< 网络传输异常，请重新升级
+#define MV_CODEREADER_E_UPG_SER_UPG_PROCESS_NOKEY           0x80020480  ///< 加密固件包因为没有key无法升级
+
 #define MV_CODEREADER_E_UPG_UNKNOW                          0x800204FF  ///< 升级时未知错误
 
 //网络组件对应的错误码:范围0x80020500-0x800205FF
@@ -124,5 +126,27 @@
 #define MV_CODEREADER_E_NET_TIMEOUT                         0x80020507  ///< 超时
 #define MV_CODEREADER_E_NET_ACCEPT                          0x80020508  ///< 接收错误
 #define MV_CODEREADER_E_NET_UNKNOW                          0x800205FF  ///< 网络未知错误
+
+//鉴权时对应的错误码:范围0x80020600-0x800206FF
+#define MV_CODEREADER_E_AUTH_PUBKEY_INVALID						0x80020601	//< 公钥不合法
+#define	MV_CODEREADER_E_AUTH_DEVICE_NOT_ACTIVE					0x80020602	//< 设备未激活，请先激活设备
+#define MV_CODEREADER_E_AUTH_PWD_FMT_INVALID					0x80020603	//< 密码格式不合法
+#define MV_CODEREADER_E_AUTH_PWD_VERIFY_FAILED					0x80020604	//< 密码校验失败
+#define MV_CODEREADER_E_AUTH_LOCKED_DENIED						0x80020605	//< 设备被锁住不允许操作
+#define MV_CODEREADER_E_AUTH_FILE_INVAID						0x80020606	//< 文件命名不合法，未在白名单中
+#define MV_CODEREADER_E_AUTH_FILE_DATA_INVALID					0x80020607	//< 文件数据不合法
+#define	MV_CODEREADER_E_AUTH_COOKIE_TIMEOUT						0x80020608	//< Cookie失效，需更新
+#define MV_CODEREADER_E_AUTH_DIGICAP_DECRY_NG					0x80020609	//< 固件包解密失败
+#define MV_CODEREADER_E_AUTH_INITRUN_VERIFY_NG					0x8002060A	//< 启动脚本验签失败
+#define MV_CODEREADER_E_AUTH_PROGRAM_VERIFY_NG					0x8002060B	//< 业务进程验签失败
+#define MV_CODEREADER_E_AUTH_DIGICAP_VERIFY_NG					0x8002060C	//< 固件包验签失败
+#define MV_CODEREADER_E_AUTH_NEED_AUTH							0x8002060D	//< 需要客户端主动发起鉴权
+#define MV_CODEREADER_E_AUTH_REDLINE_DATA_RW_FAILED				0x8002060E	//< 加密相关参数读写文件失败
+#define MV_CODEREADER_E_AUTH_REDLINE_API_FAILED					0x8002060F	//< 加密相关接口调用报错
+#define MV_CODEREADER_E_AUTH_NETENV_INVALID						0x80020610	//< 当前网络环境不合法
+#define	MV_CODEREADER_E_AUTH_DEVICE_ALREADY_ACTIVE				0x80020611	//< 设备已激活，无需重复激活
+#define MV_CODEREADER_E_AUTH_BSP_SECURE_FAILED					0x80020612	//< 与BSP安全交互报错
+#define MV_CODEREADER_E_AUTH_WIRELESS_NOT_CONNECT				0x80020613	//< 无线蓝牙未连接
+#define MV_CODEREADER_E_AUTH_UNKNOW                             0x800206FF  ///< 鉴权未知错误
 
 #endif //_MVCODEREADER_ERROR_DEFINE_H_

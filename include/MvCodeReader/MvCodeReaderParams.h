@@ -83,6 +83,9 @@ typedef char    bool;
 // 升级最大支持的设备个数
 #define MV_CODEREADER_MAX_UPGARDEDEVICE_NUM     100
 
+// 密码重置需要的重置口令长度
+#define MV_CODEREADER_RESETCOMMAND_LEN          8
+
 /************************************************************************/
 /* 抠图参数，内部有默认值，可以不设置                             */
 /************************************************************************/
@@ -136,8 +139,13 @@ typedef struct _MV_CODEREADER_GIGE_DEVICE_INFO_
     unsigned int        nNetExport;                             // 主机网口IP地址
     unsigned int        nCurUserIP;                             // 当前占用设备的用户IP
     unsigned int        nAreaLogo;                              // 智能相机区域标识(0-大陆，1-港台，2-海外)
-    unsigned int        nReserved[2];                           // 保留字节
-
+    unsigned char       chSafeMajorVer;                         // 安全协议主版本号，默认1
+    unsigned char       chSafeMinorVer;                         // 安全协议次版本号，默认0
+    unsigned char       chActive;                               // 设备激活状态，0-未激活，1-已经激活，FF-异常状态（最小系统）
+    unsigned char       chLock;                                 // 设备锁住状态，0-未锁住，1-锁住
+    unsigned short      nLockTime;                              // 设备锁住剩余时间，单位s
+    unsigned char       chSafeAction;                           // 安全协议行为。
+	unsigned char       chReserved;                             // 保留字节
 }MV_CODEREADER_GIGE_DEVICE_INFO;
 
 // U3V设备信息
@@ -174,7 +182,8 @@ typedef struct _MV_CODEREADER_DEVICE_INFO_
     unsigned int        nDeviceType;                // 设备类型   
     bool                bSelectDevice;              // 是否为指定系列型号相机: true -指定系列型号相机 false- 非指定系列型号相机
 
-    unsigned int        nReserved[2];               // 保留字节
+	unsigned int        nWebHostIp;
+    unsigned int        nReserved[1];               // 保留字节
     union
     {
         MV_CODEREADER_GIGE_DEVICE_INFO stGigEInfo;  // GigE设备信息
@@ -415,6 +424,14 @@ typedef struct _MV_CODEREADER_STRINGVALUE_T
     unsigned int    nReserved[2];                       // 保留字节
 }MV_CODEREADER_STRINGVALUE;
 
+// String类型值
+typedef struct _MV_CODEREADER_STRINGVALUE_EX_T
+{
+	char*            pValueBuf;                         // 用户输入缓冲
+	unsigned int     nBufSize;                          // 缓冲大小
+	int64_t          nMaxLength;                        // 最大长度
+	unsigned int     nReserved[2];                      // 保留字节
+}MV_CODEREADER_STRINGVALUE_EX;
 
 // Int型坐标
 typedef struct _MV_CODEREADER_POINT_I_
@@ -570,8 +587,9 @@ typedef struct _MV_CODEREADER_BCR_INFO_EX_
     unsigned int                nTriggerTimeUtvHigh;                        // 触发开始时间低32位(us)
     unsigned int                nTriggerTimeUtvLow;                         // 触发开始时间低32位(us)
 	unsigned short              sPollingIndex;                              // 库编号
-	unsigned short              sRes;								
-    unsigned int                nReserved[23];                              // 预留
+	unsigned short              sRoiIndex;
+    unsigned int                nLightSourceBitMap;                         // 光源bitmap参数，用于推送条码验证器光源配置情况进行报告输出
+    unsigned int                nReserved[22];                              // 预留
 } MV_CODEREADER_BCR_INFO_EX;
 
 // 条码信息加条码质量列表
@@ -611,8 +629,9 @@ typedef struct _MV_CODEREADER_BCR_INFO_EX_2_
     unsigned int                nTriggerTimeUtvHigh;                        // 触发开始时间低32位(us)
     unsigned int                nTriggerTimeUtvLow;                         // 触发开始时间低32位(us)
 	unsigned short              sPollingIndex;                              // 库编号
-	unsigned short              sRes;								
-    int                         nReserved[58];                              // 预留
+	unsigned short              sRoiIndex;
+    unsigned int                nLightSourceBitMap;                                    // 光源bitmap参数，用于推送条码验证器光源配置情况进行报告输出
+    int                         nReserved[57];                              // 预留
 } MV_CODEREADER_BCR_INFO_EX2;
 
 // 条码信息字符扩展加条码质量列表
@@ -868,7 +887,7 @@ typedef enum _MV_CODEREADER_CODE_TYPE_
     MV_CODEREADER_BCR_CODE128       = 128,                  // Code 128
 
     MV_CODEREADER_TDCR_PDF417       = 131,                  // PDF417码
-	MV_CODEREADER_BCR_MICROPDF417   = 134,                   // microPDF417码
+	MV_CODEREADER_BCR_MICROPDF417   = 134,                  // microPDF417码
 
     MV_CODEREADER_BCR_MATRIX25      = 26,                   // MATRIX25码
     MV_CODEREADER_BCR_MSI           = 30,                   // MSI码
@@ -883,6 +902,7 @@ typedef enum _MV_CODEREADER_CODE_TYPE_
     MV_CODEREADER_TDCR_ECC140       = 133,                  // ECC140码制
     MV_CODEREADER_TDCR_AZTEC        = 132,                  // AZTEC码
     MV_CODEREADER_TDCR_HANXIN       = 145,                  // HANXIN码
+	MV_CODEREADER_TDCR_MAXICODE     = 150,                  // MAXICODE码
 
 	MV_CODEREADER_WITHCODE_NOREAD_1D = 1000,                // 有码无读一维码
 	MV_CODEREADER_WITHCODE_NOREAD_2D = 1001,                // 有码无读二维码
@@ -956,5 +976,30 @@ typedef enum _MV_CODEREADER_FIELD_CORRECT_MODE_
     MV_CODEREADER_INVAILED_FILED_CORRECT     = 2,       // 无效校验
 
 }MV_CODEREADER_FIELD_CORRECT_MODE;
+
+// 设备鉴权类型
+typedef enum _MV_CODEREADER_DEVICE_AUTH_TYPE_
+{
+    MV_CODEREADER_DEVICE_AUTH_ForceIP = 0,    // 修改IP
+    MV_CODEREADER_DEVICE_AUTH_Upgrade = 1,    // 设备升级
+    MV_CODEREADER_DEVICE_AUTH_VerifyPWD = 2   // 密码验证
+}MV_CODEREADER_DEVICE_AUTH_TYPE;
+
+// 设备鉴权失败信息
+typedef struct _MV_CODEREADER_AUTH_FAILED_INFO_
+{
+    unsigned short nFailTimes;       // 登录失败次数
+    unsigned short nRemainTryTimes;  // 剩余登录尝试次数
+    bool           bLockFlag;        // 设备锁定状态，false-未锁定, true-锁定
+    unsigned short nLockTime;       // 设备锁定时间
+    unsigned int   nReserved1[16]; // 保留
+}MV_CODEREADER_AUTH_FAILED_INFO;
+
+// 寄存器 参数
+typedef struct _MV_CODEREADER_REG_PARAM_
+{
+	unsigned int nRegAddress;              // 寄存器地址
+	unsigned int nRegData;                 // 寄存器值
+}MV_CODEREADER_REG_PARAM;
 
 #endif /* _MV_CODEREADER_PARAMS_H_ */
