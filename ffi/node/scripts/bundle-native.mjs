@@ -48,7 +48,10 @@ for (const f of fromCmake) {
 // ---------------------------------------------------------------------------
 
 const READER_SEARCH_ROOTS = [
-  'D:\\IDMVS\\Applications\\Win64\\plugins\\MvSDK',
+  // IDMVS 的读码器运行时在 plugins\mvsidcamctrl 下。曾经这里写的是 plugins\MvSDK
+  // ——那个目录**在真机上是根本不存在的**（IDMVS 安装器注册的 PATH 项还留着这个名字，
+  // 所以它看着像真的）。本脚本靠下面的 where.exe 兜住了，但别再把错的名字抄回来。
+  'D:\\IDMVS\\Applications\\Win64\\plugins\\mvsidcamctrl',
   'C:\\Program Files\\MVS',
   'C:\\Program Files (x86)\\MVS',
   'C:\\Program Files\\IDMVS',
