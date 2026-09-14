@@ -17,6 +17,7 @@
 #include "hik_mvcamera/c_api.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -198,6 +199,13 @@ Napi::Value StartDevice(const Napi::CallbackInfo& info) {
         if (p.Has("net_trans_mode") && p.Get("net_trans_mode").IsNumber()) {
             copen.net_trans_mode = p.Get("net_trans_mode").As<Napi::Number>().Int32Value();
         }
+        // >0 时起流前写 Width/Height；线阵相机 Height 为每帧行数
+        if (p.Has("width") && p.Get("width").IsNumber()) {
+            copen.width = p.Get("width").As<Napi::Number>().Int32Value();
+        }
+        if (p.Has("height") && p.Get("height").IsNumber()) {
+            copen.height = p.Get("height").As<Napi::Number>().Int32Value();
+        }
     }
 
     int frameAction = HIK_CV_FRAME_KEEP;
@@ -348,6 +356,94 @@ Napi::Value ForceIp(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+/**
+ * runCommand(sn, name)：执行 GenICam 命令节点（如 "TriggerSoftware"、"UserSetLoad"）。
+ * 命令节点无值，故不走 setParam 的取值分支——与 Go 的 ParamCommand / Python 的 set_command 对齐。
+ */
+Napi::Value RunCommand(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    const std::string serial = requireSerial(info);
+    if (info.Length() < 2 || !info[1].IsString()) {
+        throw Napi::TypeError::New(env, "name must be a string");
+    }
+    const std::string name = info[1].As<Napi::String>().Utf8Value();
+
+    HikCvParamValue pv{};
+    pv.type = HIK_CV_PARAM_COMMAND;
+    check(env, hik_cv_set_param(serial.c_str(), name.c_str(), &pv));
+    return env.Undefined();
+}
+
+/**
+ * encodeJpeg(sn, frameInfo, buffer, quality?, method?) → Buffer。
+ * 把 onFrame 拿到的原始帧编码为 JPEG 字节；不落盘，供直接上传/展示。
+ * frameInfo 取 onFrame 回调第二参，buffer 取第三参。设备须已 startDevice。
+ */
+Napi::Value EncodeJpeg(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    const std::string serial = requireSerial(info);
+    if (info.Length() < 3 || !info[1].IsObject() || !info[2].IsBuffer()) {
+        throw Napi::TypeError::New(env, "encodeJpeg(sn, frameInfo, buffer, quality?, method?)");
+    }
+
+    const Napi::Object o = info[1].As<Napi::Object>();
+    HikCvFrameInfo fi{};
+    const auto readUint = [&](const char* key, unsigned int& dst) {
+        if (o.Has(key) && o.Get(key).IsNumber()) {
+            dst = static_cast<unsigned int>(o.Get(key).As<Napi::Number>().Uint32Value());
+        }
+    };
+    readUint("width", fi.width);
+    readUint("height", fi.height);
+    readUint("pixel_type", fi.pixel_type);
+    readUint("pixelType", fi.pixel_type);  // 兼容 onFrame 给出的驼峰字段名
+    readUint("frame_len", fi.frame_len);
+    readUint("frameLen", fi.frame_len);
+    readUint("frame_num", fi.frame_num);
+    readUint("frameNum", fi.frame_num);
+    if (o.Has("hostTimestamp") && o.Get("hostTimestamp").IsNumber()) {
+        fi.host_timestamp = static_cast<uint64_t>(o.Get("hostTimestamp").As<Napi::Number>().Int64Value());
+    }
+
+    Napi::Buffer<unsigned char> buf = info[2].As<Napi::Buffer<unsigned char>>();
+    const unsigned char* data = buf.Data();
+    const size_t len = buf.Length();
+    // 帧长以实际缓冲为准（元数据可能未填或被截断）
+    if (fi.frame_len == 0) {
+        fi.frame_len = static_cast<unsigned int>(len);
+    }
+
+    int quality = 0;
+    int method = -1;
+    if (info.Length() >= 4 && info[3].IsNumber()) {
+        quality = info[3].As<Napi::Number>().Int32Value();
+    }
+    if (info.Length() >= 5 && info[4].IsNumber()) {
+        method = info[4].As<Napi::Number>().Int32Value();
+    }
+
+    // 一、取输出上界。out_data=NULL 的查询路径不编码，只是按 w×h×3 + 富余量估算，很便宜。
+    size_t bound = 0;
+    check(env, hik_cv_encode_jpeg(serial.c_str(), &fi, data, len, quality, method, nullptr, 0, &bound));
+    if (bound == 0) {
+        throw Napi::Error::New(env, "encodeJpeg: 输出缓冲上界为 0");
+    }
+
+    // 二、用该缓冲当临时输出，**只编码这一次**（此前实现是先编码一遍量长度、再编码一遍取数据，双倍开销）。
+    Napi::Buffer<unsigned char> scratch = Napi::Buffer<unsigned char>::New(env, bound);
+    size_t actual = 0;
+    check(env,
+          hik_cv_encode_jpeg(serial.c_str(), &fi, data, len, quality, method, scratch.Data(), bound, &actual));
+
+    // 三、裁到真实长度（JPEG 通常远小于上界，直接返回 scratch 会带一截无用尾巴）。
+    // 成功路径的 actual 由 C ABI 保证 <= bound，故这里的 memcpy 不会越界。
+    Napi::Buffer<unsigned char> out = Napi::Buffer<unsigned char>::New(env, actual);
+    if (actual > 0) {
+        std::memcpy(out.Data(), scratch.Data(), actual);
+    }
+    return out;
+}
+
 Napi::Value LastError(const Napi::CallbackInfo& info) {
     return Napi::String::New(info.Env(), lastErrorString());
 }
@@ -365,6 +461,8 @@ Napi::Object RegisterCamera(Napi::Env env, Napi::Object exports) {
     exports.Set("triggerDevice", Napi::Function::New(env, TriggerDevice));
     exports.Set("setParam", Napi::Function::New(env, SetParam));
     exports.Set("getParam", Napi::Function::New(env, GetParam));
+    exports.Set("runCommand", Napi::Function::New(env, RunCommand));
+    exports.Set("encodeJpeg", Napi::Function::New(env, EncodeJpeg));
     exports.Set("forceIp", Napi::Function::New(env, ForceIp));
     exports.Set("lastError", Napi::Function::New(env, LastError));
 

@@ -63,6 +63,29 @@ CamParamValue getCameraParam(const std::string& sn, const std::string& name);
 void runCameraCommand(const std::string& sn, const std::string& name);
 
 /**
+ * JPEG 输出缓冲上界：按 RGB24 最坏体积（宽 × 高 × 3）加固定富余量计算，**不做编码**。
+ * 调用方可据此预分配缓冲再调 encodeCameraJpeg，避免「先编码一遍只为量长度」的浪费。
+ * 宽/高为 0、超过海康 JPEG 上限（65500）或乘积溢出时抛 invalid_argument。
+ */
+size_t cameraJpegBufferBound(unsigned int width, unsigned int height);
+
+/**
+ * 把内存中的一帧原始图像编码为 JPEG 字节（MV_CC_SaveImageEx3；不落盘）。
+ * 供上层把 onFrame 拿到的原始帧直接转成可上传/可展示的 JPEG，省掉「落盘再读回」的往返。
+ *
+ * @param sn      设备序列号；该设备须已 startCamera（内部复用其句柄——SaveImageEx3 需要句柄上下文
+ *                来应用 Bayer 插值/gamma/CCM 等设置）。
+ * @param info    帧元数据（宽/高/像素格式），取自 onFrame 回调的 frameInfo。
+ * @param data    原始帧数据（onFrame 回调的 buffer）。
+ * @param len     原始帧数据字节数。**须与 info 描述的一致**：内部按 width×height 校验下界，
+ *                不匹配时抛 invalid_argument —— 否则会把小缓冲当大图交给 SDK 越界读。
+ * @param quality JPEG 编码质量，有效区间 (50,99]；超出区间按 80 处理。
+ * @param method  Bayer 插值方法 0-快速 1-均衡 2-最优 3-最优+；非 0..3 按 1（均衡）处理。
+ */
+std::vector<unsigned char> encodeCameraJpeg(const std::string& sn, const FrameInfo& info,
+                                            const unsigned char* data, size_t len, int quality, int method);
+
+/**
  * 临时强制 GigE 相机 IP（MV_GIGE_ForceIpEx；重启后恢复，不改持久配置）。
  * 参数为 "a.b.c.d" 字符串；网关可为 "0.0.0.0"。
  */

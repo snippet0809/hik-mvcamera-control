@@ -38,6 +38,34 @@ export interface ReaderStartDeviceOptions {
   clearBcr?: boolean;
 }
 
+/** 读码成功帧的元数据（不含图像数据；数据经回调的 buffer 传递）。 */
+export interface ReaderFrameInfo {
+  width: number;
+  height: number;
+  /** MvCodeReaderGvspPixelType；读码器帧通常已是 JPEG。 */
+  pixelType: number;
+  frameLen: number;
+  frameNum: number;
+}
+
+/** 最近一次 BCR 成功帧的图像副本。 */
+export interface BcrImage {
+  width: number;
+  height: number;
+  /** MvCodeReaderGvspPixelType；读码器帧通常已是 JPEG。 */
+  pixelType: number;
+  buffer: Buffer;
+}
+
+export type ReaderFrameCallback = (serial: string, info: ReaderFrameInfo, buffer: Buffer) => void;
+
+export interface ReaderFrameCallbackOptions {
+  /** 读码成功帧回调：(serial, frameInfo, buffer) => void。 */
+  onFrame?: ReaderFrameCallback | null;
+  /** 清除该序列号已登记的帧回调（与 onFrame 互斥）。 */
+  clearFrame?: boolean;
+}
+
 export class HikCodeReader {
   constructor();
   /** 枚举设备；无读码器时返回 []。 */
@@ -46,8 +74,20 @@ export class HikCodeReader {
   startDevice(sn: string, opts?: ReaderStartDeviceOptions): void;
   /** 停流；已登记的 BCR 回调保留。 */
   stopDevice(sn: string): void;
+  /** 停流但保留连接（不 CloseDevice）；下次 startDevice 省掉重建句柄 + OpenDevice。 */
+  stopGrabbing(sn: string): void;
   /** 软触发（须已 startDevice 且处于取流）。 */
   triggerDevice(sn: string): void;
+  /** 按 GenICam 节点名写参数；value 支持 number/boolean/string。设备须已 startDevice。 */
+  setParam(sn: string, name: string, value: number | boolean | string): void;
+  /** 按 GenICam 节点名读参数 → number | boolean | string。设备须已 startDevice。 */
+  getParam(sn: string, name: string): number | boolean | string;
+  /** 执行 GenICam 命令节点（如 'TriggerSoftware'、'UserSetLoad'）。设备须已 startDevice。 */
+  runCommand(sn: string, name: string): void;
+  /** 取最近一次 BCR 成功帧的图像副本；该序列号尚未读到过条码时返回 null。 */
+  getBcrImage(sn: string): BcrImage | null;
+  /** 登记 / 清除读码成功帧回调（独立于 BCR，可在已取流时热替换）。 */
+  setFrameCallback(sn: string, opts?: ReaderFrameCallbackOptions): void;
   /** 最近一次错误的线程局部信息。 */
   lastError(): string;
 }
@@ -69,6 +109,10 @@ export interface CameraOpenParamsLike {
   trigger_source?: string;
   /** 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）。 */
   net_trans_mode?: number;
+  /** >0 时起流前写 Width。 */
+  width?: number;
+  /** >0 时起流前写 Height（线阵相机：每帧行数）。 */
+  height?: number;
 }
 
 export class CameraOpenParams implements CameraOpenParamsLike {
@@ -76,6 +120,10 @@ export class CameraOpenParams implements CameraOpenParamsLike {
   trigger_source?: string;
   /** 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）。 */
   net_trans_mode?: number;
+  /** >0 时起流前写 Width。 */
+  width?: number;
+  /** >0 时起流前写 Height（线阵相机：每帧行数）。 */
+  height?: number;
   constructor(opts?: CameraOpenParamsLike);
   toNative(): CameraOpenParamsLike;
 }
@@ -115,6 +163,14 @@ export class HikCamera {
   setParam(sn: string, name: string, value: number | boolean | string): void;
   /** 按 GenICam 节点名读参数 → number | boolean | string。 */
   getParam(sn: string, name: string): number | boolean | string;
+  /** 执行 GenICam 命令节点（如 'TriggerSoftware'、'UserSetLoad'）。设备须已 startDevice。 */
+  runCommand(sn: string, name: string): void;
+  /**
+   * 把 onFrame 拿到的原始帧编码为 JPEG 字节 → Buffer（不落盘）。
+   * @param quality JPEG 质量 (50,99]；省略或越界按 80
+   * @param method  Bayer 插值 0-快速 1-均衡 2-最优 3-最优+；省略或越界按 1
+   */
+  encodeJpeg(sn: string, frameInfo: FrameInfo, frameBuffer: Buffer, quality?: number, method?: number): Buffer;
   /** 临时强制 GigE 相机 IP（重启恢复，不改持久配置）。 */
   forceIp(sn: string, ip: string, subnetMask?: string, gateway?: string): void;
   /** 最近一次错误的线程局部信息。 */
@@ -143,6 +199,11 @@ export const HIK_CR_ERR_NO_MEMORY: number;
 export const HIK_CR_BCR_KEEP: number;
 export const HIK_CR_BCR_SET: number;
 export const HIK_CR_BCR_CLEAR: number;
+export const HIK_CR_FRAME_KEEP: number;
+export const HIK_CR_FRAME_SET: number;
+export const HIK_CR_FRAME_CLEAR: number;
+/** 读码器字符串参数读取的建议缓冲长度。 */
+export const HIK_CR_PARAM_STRING_MAX: number;
 
 export const HIK_CV_OK: number;
 export const HIK_CV_ERR_UNKNOWN: number;

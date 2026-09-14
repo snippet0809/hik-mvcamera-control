@@ -143,6 +143,10 @@ const HIK_CR_ERR_NO_MEMORY = readerNative.HIK_CR_ERR_NO_MEMORY;
 const HIK_CR_BCR_KEEP = readerNative.HIK_CR_BCR_KEEP;
 const HIK_CR_BCR_SET = readerNative.HIK_CR_BCR_SET;
 const HIK_CR_BCR_CLEAR = readerNative.HIK_CR_BCR_CLEAR;
+const HIK_CR_FRAME_KEEP = readerNative.HIK_CR_FRAME_KEEP;
+const HIK_CR_FRAME_SET = readerNative.HIK_CR_FRAME_SET;
+const HIK_CR_FRAME_CLEAR = readerNative.HIK_CR_FRAME_CLEAR;
+const HIK_CR_PARAM_STRING_MAX = readerNative.HIK_CR_PARAM_STRING_MAX;
 
 const HIK_CV_OK = cameraNative.HIK_CV_OK;
 const HIK_CV_ERR_UNKNOWN = cameraNative.HIK_CV_ERR_UNKNOWN;
@@ -182,6 +186,8 @@ class HikCodeReader {
   constructor() {
     /** 保活已登记的 BCR 回调（与 Python `_bcr_keepalive` 同构）。 */
     this._bcrKeepalive = new Map();
+    /** 保活已登记的读码成功帧回调（与 `_bcrKeepalive` 同构）。 */
+    this._frameKeepalive = new Map();
   }
 
   /** 枚举设备 → [{serialNumber, netExportIp}]。无读码器时返回 []。 */
@@ -233,6 +239,67 @@ class HikCodeReader {
     readerNative.triggerDevice(sn);
   }
 
+  /** 停流但保留连接（不 CloseDevice）；下次 startDevice 省掉重建句柄 + OpenDevice。 */
+  stopGrabbing(sn) {
+    readerNative.stopGrabbing(sn);
+  }
+
+  /** 按 GenICam 节点名写参数；value 支持 number / boolean / string。设备须已 startDevice。 */
+  setParam(sn, name, value) {
+    readerNative.setParam(sn, name, value);
+  }
+
+  /** 按 GenICam 节点名读参数 → number | boolean | string。设备须已 startDevice。 */
+  getParam(sn, name) {
+    return readerNative.getParam(sn, name);
+  }
+
+  /** 执行 GenICam 命令节点（如 'TriggerSoftware'、'UserSetLoad'）。设备须已 startDevice。 */
+  runCommand(sn, name) {
+    readerNative.runCommand(sn, name);
+  }
+
+  /**
+   * 取最近一次 BCR 成功帧的图像副本 → { width, height, pixelType, buffer } | null。
+   * 图像与解码结果来自同一帧，不会错配；该序列号尚未读到过条码时返回 null。
+   * 读码器帧通常已是 JPEG（pixelType 为 Gvsp_Jpeg），buffer 可直接当 JPEG 字节用。
+   */
+  getBcrImage(sn) {
+    return readerNative.getBcrImage(sn);
+  }
+
+  /**
+   * 登记 / 清除读码成功帧回调（`(serial, frameInfo, buffer) => void`）。
+   * 独立于 BCR，可在已取流时热替换；未登记时读码成功帧仅走 BCR、图像不转发。
+   * @param {string} sn 序列号
+   * @param {object} [opts]
+   * @param {Function} [opts.onFrame] 帧回调
+   * @param {boolean} [opts.clearFrame] 清除该序列号已登记的帧回调
+   */
+  setFrameCallback(sn, opts = {}) {
+    if (typeof sn !== 'string' || sn.length === 0) {
+      throw new TypeError('serial must be a non-empty string');
+    }
+    const { onFrame = null, clearFrame = false } = opts || {};
+    if (clearFrame && onFrame != null) {
+      throw new Error('clearFrame 与 onFrame 不可同时指定');
+    }
+    if (clearFrame) {
+      readerNative.setFrameCallback(sn, HIK_CR_FRAME_CLEAR, null);
+      this._frameKeepalive.delete(sn);
+      return;
+    }
+    if (onFrame != null) {
+      if (typeof onFrame !== 'function') {
+        throw new TypeError('onFrame must be a function');
+      }
+      this._frameKeepalive.set(sn, onFrame);
+      readerNative.setFrameCallback(sn, HIK_CR_FRAME_SET, onFrame);
+      return;
+    }
+    readerNative.setFrameCallback(sn, HIK_CR_FRAME_KEEP, null);
+  }
+
   /** 最近一次错误的线程局部信息。 */
   lastError() {
     return readerNative.lastError();
@@ -243,20 +310,30 @@ class HikCodeReader {
 // 高层 API：相机
 // ---------------------------------------------------------------------------
 
-/** 相机起流前 GenICam 项（trigger_mode/trigger_source/net_trans_mode；未填字段不修改）。 */
+/** 相机起流前 GenICam 项（trigger_mode/trigger_source/net_trans_mode/width/height；未填字段不修改）。 */
 class CameraOpenParams {
-  constructor({ trigger_mode = undefined, trigger_source = undefined, net_trans_mode = undefined } = {}) {
+  constructor({
+    trigger_mode = undefined,
+    trigger_source = undefined,
+    net_trans_mode = undefined,
+    width = undefined,
+    height = undefined,
+  } = {}) {
     this.trigger_mode = trigger_mode;
     this.trigger_source = trigger_source;
     this.net_trans_mode = net_trans_mode;
+    this.width = width;
+    this.height = height;
   }
 
-  /** 转成 addon 期望的 {key:value}（net_trans_mode 转 number，省略 undefined/空串）。 */
+  /** 转成 addon 期望的 {key:value}（net_trans_mode/width/height 转 number，省略 undefined/空串）。 */
   toNative() {
     const o = {};
     if (this.trigger_mode) o.trigger_mode = String(this.trigger_mode);
     if (this.trigger_source) o.trigger_source = String(this.trigger_source);
     if (this.net_trans_mode != null) o.net_trans_mode = Number(this.net_trans_mode);
+    if (this.width != null) o.width = Number(this.width);
+    if (this.height != null) o.height = Number(this.height);
     return o;
   }
 }
@@ -326,6 +403,33 @@ class HikCamera {
     return cameraNative.getParam(sn, name);
   }
 
+  /** 执行 GenICam 命令节点（如 'TriggerSoftware'、'UserSetLoad'）。设备须已 startDevice。 */
+  runCommand(sn, name) {
+    cameraNative.runCommand(sn, name);
+  }
+
+  /**
+   * 把 onFrame 拿到的原始帧编码为 JPEG 字节 → Buffer（不落盘）。
+   * 设备须已 startDevice；frameInfo 取 onFrame 第二参，frameBuffer 取第三参。
+   * @param {string} sn 序列号
+   * @param {object} frameInfo onFrame 回调的帧元数据
+   * @param {Buffer} frameBuffer onFrame 回调的原始帧缓冲
+   * @param {number} [quality] JPEG 质量 (50,99]；省略或越界按 80
+   * @param {number} [method] Bayer 插值 0-快速 1-均衡 2-最优 3-最优+；省略或越界按 1
+   */
+  encodeJpeg(sn, frameInfo, frameBuffer, quality = 0, method = -1) {
+    if (typeof sn !== 'string' || sn.length === 0) {
+      throw new TypeError('serial must be a non-empty string');
+    }
+    if (!frameInfo || typeof frameInfo !== 'object') {
+      throw new TypeError('frameInfo must be an object (from onFrame)');
+    }
+    if (!Buffer.isBuffer(frameBuffer)) {
+      throw new TypeError('frameBuffer must be a Buffer (from onFrame)');
+    }
+    return cameraNative.encodeJpeg(sn, frameInfo, frameBuffer, quality, method);
+  }
+
   /**
    * 临时强制 GigE 相机 IP（MV_GIGE_ForceIpEx；重启后恢复，不改持久配置）。
    * 改完 IP 后需重新 enumDevices 并针对新 IP 起流。
@@ -355,6 +459,10 @@ module.exports = {
   HIK_CR_BCR_KEEP,
   HIK_CR_BCR_SET,
   HIK_CR_BCR_CLEAR,
+  HIK_CR_FRAME_KEEP,
+  HIK_CR_FRAME_SET,
+  HIK_CR_FRAME_CLEAR,
+  HIK_CR_PARAM_STRING_MAX,
   HIK_CV_OK,
   HIK_CV_ERR_UNKNOWN,
   HIK_CV_ERR_LOGIC,

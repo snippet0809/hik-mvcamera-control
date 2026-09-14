@@ -38,6 +38,8 @@ extern "C" {
 #define HIK_CR_SERIAL_MAX 256
 #define HIK_CR_IPV4_STR_MAX 64
 #define HIK_CR_MODEL_MAX 64
+/** 字符串参数读取的建议缓冲（与相机侧 HIK_CV_STRING_MAX 一致）；超长时读取报 "field too long"。 */
+#define HIK_CR_PARAM_STRING_MAX 256
 
 typedef enum HikCrResult {
     HIK_CR_OK = 0,

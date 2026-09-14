@@ -264,6 +264,39 @@ HIK_CV_API HikCvResult hik_cv_get_param_string(const char* serial_utf8, const ch
     });
 }
 
+HIK_CV_API HikCvResult hik_cv_encode_jpeg(const char* serial_utf8, const HikCvFrameInfo* info,
+                                          const unsigned char* data, size_t len, int quality, int method,
+                                          unsigned char* out_data, size_t out_cap, size_t* out_len) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !info || !out_len) {
+        return HIK_CV_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        // 仅查长度：回一个可直接用于分配的**上界**，不真去编码一遍。
+        // （SaveImageEx3 无「只查长度」的调用方式，若这里真编码一次，调用方再编码一次就是双倍开销。）
+        if (!out_data) {
+            *out_len = cameraJpegBufferBound(info->width, info->height);
+            return;
+        }
+
+        FrameInfo fi;
+        fi.width = info->width;
+        fi.height = info->height;
+        fi.pixelType = info->pixel_type;
+        fi.frameLen = info->frame_len;
+        fi.frameNum = info->frame_num;
+        fi.hostTimestamp = info->host_timestamp;
+
+        const std::vector<unsigned char> jpeg =
+            encodeCameraJpeg(serial_utf8, fi, data, len, quality, method);
+
+        if (out_cap < jpeg.size()) {
+            throw std::runtime_error("hik_cv_encode_jpeg: out_cap 不足");
+        }
+        std::memcpy(out_data, jpeg.data(), jpeg.size());
+        *out_len = jpeg.size();  // 成功路径回真实长度（查询路径回的是上界）
+    });
+}
+
 HIK_CV_API size_t hik_cv_last_error_copy(char* out_utf8, size_t buf_size) {
     const size_t need = g_err.size() + 1;
     if (!out_utf8 || !buf_size) {

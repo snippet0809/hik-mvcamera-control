@@ -198,6 +198,7 @@ set(HIK_MVCAMERA_SOURCES
     src/mvcamera/device_control.cpp
     src/mvcamera/device_info.cpp
     src/mvcamera/image_callback.cpp
+    src/mvcamera/image_encode.cpp
     src/mvcamera/param.cpp
 )
 

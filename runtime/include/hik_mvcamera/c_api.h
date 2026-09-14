@@ -133,6 +133,23 @@ HIK_CV_API HikCvResult hik_cv_set_param_string(const char* serial_utf8, const ch
 HIK_CV_API HikCvResult hik_cv_get_param_string(const char* serial_utf8, const char* name,
                                                char* out_utf8, size_t buf_size);
 
+/**
+ * 把一帧原始图像编码为 JPEG 字节（MV_CC_SaveImageEx3；不落盘）。
+ * 设备须已 `hik_cv_start_device`（编码需要该设备句柄来应用 Bayer 插值/gamma/CCM 等设置）。
+ *
+ * 两段式取长：`out_data` 为 NULL 时回填 `*out_len` 为**输出缓冲上界**（按宽度×高度×3 + 富余量估算，
+ * 不做编码，因而很便宜），调用方据此分配后再调一次；传入缓冲时 `out_cap` 须不小于实际需要，
+ * 否则返回 HIK_CV_ERR_RUNTIME。**两次调用回填的语义不同**：查询路径是上界，成功路径是真实长度。
+ *
+ * `info` 取图像回调给出的帧元数据；`data`/`len` 为回调给出的原始帧数据与字节数。
+ * `len` 与 `info` 描述必须一致——内部按 width×height 校验下界，不匹配返回 HIK_CV_ERR_INVALID_ARG
+ * （防止小缓冲被当成大图导致越界读）。
+ * `quality` 有效区间 (50,99]，越界按 80 处理；`method` 取 0..3，越界按 1（均衡）处理。
+ */
+HIK_CV_API HikCvResult hik_cv_encode_jpeg(const char* serial_utf8, const HikCvFrameInfo* info,
+                                          const unsigned char* data, size_t len, int quality, int method,
+                                          unsigned char* out_data, size_t out_cap, size_t* out_len);
+
 /** 失败信息（线程局部）；返回所需缓冲（含 '\0'）或已写入长度（不含 '\0'）。 */
 HIK_CV_API size_t hik_cv_last_error_copy(char* out_utf8, size_t buf_size);
 
