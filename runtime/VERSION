@@ -4,10 +4,10 @@
 #       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
 schema              = 2
 source_repo         = https://github.com/snippet0809/hik-mvcamera-control
-source_commit       = fa8aba92993dfb7325392d91b199af9de7261a51
-source_commit_short = fa8aba9
-source_date         = 2026-09-12 16:31
-wrapper_version     = 0.2.0
+source_commit       = 4c7b89be3dafb892eb949e26426774400f41f234
+source_commit_short = 4c7b89b
+source_date         = 2026-09-15 11:10
+wrapper_version     = 0.3.0
 
 # ── 分发模型（2026-09-12 起，Windows 侧改口径）──────────────────────────────
 # Windows 的**厂商**运行时不再随仓库分发，改由使用方自行安装 MVS/IDMVS 提供；

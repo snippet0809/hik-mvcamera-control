@@ -173,6 +173,24 @@ import (
 > （模块 zip 拿不到 `include/`），且参数读写直接写了 `cv.type`（`type` 是 Go 保留字）
 > 与匿名 union 成员。**旧路径任何时候都没有真正可用过。**
 
+> **⚠️ 待补的 API（2026-09-15 记录，本次未实现）**
+>
+> Go 绑定落后于 C ABI，有 **4 个函数尚未暴露**。以后要用 Go 时按需补齐：
+>
+> | C ABI（头里已声明） | 归属 | Go 现状 |
+> |---|---|---|
+> | `hik_cv_encode_jpeg` | 相机 | `hikcv` 无 → 需加 `EncodeJpeg` |
+> | `hik_cr_get_bcr_image` | 读码器 | `hikcr` 无 → 需加 `GetBcrImage` |
+> | `hik_cr_stop_grabbing` | 读码器 | `hikcr` 无 → 需加 `StopGrabbing` |
+> | `hik_cr_set_frame_callback` | 读码器 | `hikcr` 无 → 需加 `SetFrameCallback` |
+>
+> 现在 `go build ./...` 仍能通过（Go 侧根本没引用这些符号），所以这个缺口是**静默**的。
+>
+> **补之前必须先刷新 `runtime/` 的 wrapper**：`runtime/include/hik_mvcamera/c_api.h`
+> 已声明 `hik_cv_encode_jpeg`，但 `runtime/windows-x86_64/lib/hik_mvcamera.lib` **没有导出它**
+> ——这就是 `scripts/verify-runtime.sh` 要抓的「头新库旧」。读码器侧 `runtime/` 的三个符号是齐的，
+> **只有相机侧缺这一个**。不先刷新，`hikcv` 一旦加上 `EncodeJpeg`，`go build` 会直接**链接失败**。
+
 **链接模型：构建期与运行期分开看。**
 
 **构建期**只依赖本项目自己的东西——头在 `runtime/include`，导入库在
