@@ -19,9 +19,12 @@
     "scripts/",
     "README.md"
   ],
+  "prebuild": {
+    "test": "scripts/prebuild-selfcheck.cjs"
+  },
   "scripts": {
     "install": "node-gyp-build",
-    "build:native": "cmake --build ../build --config Release",
+    "build:native": "cmake --build ../../build --config Release",
     "bundle": "node scripts/bundle-native.mjs",
     "build:addon": "node-gyp rebuild",
     "prebuild": "prebuildify --napi",

@@ -20,13 +20,36 @@ const NATIVE_DIR = path.join(PKG_ROOT, '_native');
 // DLL 搜索路径准备
 // ---------------------------------------------------------------------------
 
+/**
+ * 把 asar 内的路径映射到 `app.asar.unpacked` 下的真实路径。
+ *
+ * **为什么必须映射**：electron-builder 打包后本模块的 `__dirname` 落在
+ * `resources/app.asar/node_modules/hik-mvcamera-control/lib`，于是下面算出的 `_native/`
+ * 是 `.../app.asar/.../_native`。Electron 对 `fs` 做了 asar 虚拟化，所以
+ * `fs.existsSync()`/`statSync()` 会**报真**，路径能通过校验、被前置进 PATH；
+ * 但真正去解析 `hik_mvcamera.dll` 的是 **Windows 加载器**，它读不了 asar，
+ * 于是加载报 "The specified module could not be found"，整个视觉层起不来。
+ *
+ * `asarUnpack` 把 DLL 放在了 `app.asar.unpacked/...`——那才是加载器能读的真实目录。
+ * 未打包（`npm run dev` / `npm link`）时路径里没有 `app.asar`，此函数原样返回。
+ *
+ * @param {string} p 待映射路径
+ * @returns {string} 加载器可见的真实路径
+ */
+function _asarToUnpacked(p) {
+  const marker = `app.asar${path.sep}`;
+  const idx = p.indexOf(marker);
+  if (idx === -1) return p;
+  return `${p.slice(0, idx)}app.asar.unpacked${path.sep}${p.slice(idx + marker.length)}`;
+}
+
 function _existingDirs(dirs) {
   const seen = new Set();
   const out = [];
   for (const d of dirs) {
     if (!d) continue;
     try {
-      const r = path.resolve(d);
+      const r = _asarToUnpacked(path.resolve(d));
       if (fs.existsSync(r) && fs.statSync(r).isDirectory()) {
         const key = r.toLowerCase();
         if (!seen.has(key)) {
