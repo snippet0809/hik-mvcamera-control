@@ -153,7 +153,16 @@ export class HikCamera {
   constructor();
   /** 枚举相机（GigE + USB）；无相机时返回 []。 */
   enumDevices(): CameraDeviceInfo[];
-  /** 起流；已在取流时忽略 params，仅按 onFrame/clearFrame 更新图像回调。 */
+  /**
+   * 起流。
+   *
+   * 已在取流时：忽略 `params` 并直接返回。
+   *
+   * **但取流中不能登记/更换图像回调** —— 海康要求 `MV_CC_RegisterImageCallBackEx` 在
+   * `StartGrabbing` **之前**调用（见 `MvCameraControl.h` 的 @remarks），取流中改会被 SDK
+   * 拒为 `MV_E_CALLORDER`。这是**厂商的时序约束**，不是可绕过的缺陷。故已在取流时若传了
+   * `onFrame`/`clearFrame`，本方法抛 `logic_error`；要换回调请先 `stopDevice` 再 `startDevice`。
+   */
   startDevice(sn: string, opts?: CameraStartDeviceOptions): void;
   /** 停流；已登记的图像回调保留。 */
   stopDevice(sn: string): void;

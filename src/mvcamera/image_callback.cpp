@@ -49,6 +49,20 @@ void __stdcall imageBridge(unsigned char* pData, MV_FRAME_OUT_INFO_EX* pFrameInf
 } // namespace
 
 void registerFrameCallbackForSerial(const std::string& sn, const CameraFrameCallback& cb) {
+    // 海康的时序约束：MV_CC_RegisterImageCallBackEx 必须在 StartGrabbing **之前**调用
+    // （MvCameraControl.h 的 @remarks：「先 RegisterImageCallBackEx，再 StartGrabbing」；
+    //  在 MV_CC_CreateHandle() 之后即可调用）。取流中更换回调会被 SDK 拒为
+    // MV_E_CALLORDER(0x80000003) —— 那是**厂商设计的约束**，不是可以绕过的缺陷：
+    // 想换回调必须 StopGrabbing → 重新登记 → 再 StartGrabbing。
+    //
+    // 这里抛可操作的错误，而不是把裸错误码透给调用方；并且**先判后改**，
+    // 避免「注册表里已换成新回调、设备上跑的还是旧回调」这种不一致。
+    CameraDevice* d = findCamera(sn);
+    if (d && d->status == CameraStatus::Grabbing) {
+        throw std::logic_error(
+            "registerFrameCallbackForSerial: 设备正在取流，无法登记/更换图像回调"
+            "（海康要求回调在 StartGrabbing 之前登记）；请先 stopCamera 再 startCamera: " + sn);
+    }
     {
         std::lock_guard<std::mutex> lk(g_framesMutex);
         if (cb) {
@@ -56,10 +70,6 @@ void registerFrameCallbackForSerial(const std::string& sn, const CameraFrameCall
         } else {
             g_frames.erase(sn);
         }
-    }
-    CameraDevice* d = findCamera(sn);
-    if (d && d->status == CameraStatus::Grabbing) {
-        cameraInternalBindImageCallbackBeforeGrabbing(d);
     }
 }
 

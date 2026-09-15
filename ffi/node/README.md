@@ -212,6 +212,7 @@ applyParams(sn);   // ← 关键：每次启动后重设
 
 注意：
 - `startDevice` 的 `CameraOpenParams` 只在**进入取流那一刻**应用（trigger_mode/trigger_source/net_trans_mode），且**已在取流时会被忽略**；其它参数一律用 `setParam` 单独设置。
+- **相机在取流中不能登记/更换图像回调**：海康要求 `MV_CC_RegisterImageCallBackEx` 在 `StartGrabbing` **之前**调用（`MvCameraControl.h` 的 `@remarks`），取流中改会被 SDK 拒为 `MV_E_CALLORDER`。这是厂商的时序约束，不是本包的缺陷。因此已在取流时调用 `startDevice(sn, { onFrame })` 会抛 `logic_error` —— **要换回调必须先 `stopDevice` 再 `startDevice`**。（读码器侧是另一套 SDK，`setFrameCallback` 的热替换未在真机上验证过。）
 - 若开启了自动曝光/自动增益，相机自身会覆盖手动 `setParam` 的值，属正常行为。
 - 需要"一次保存、每次上电自动恢复"时可考虑相机侧 **UserSet 持久化**（`UserSetSave` 命令节点），但当前包尚未暴露命令节点执行 API（后续可加 `runCommand`）。
 
