@@ -436,6 +436,44 @@ print(cr.enum_devices())
 那次搬迁同时修好了两个让 <code>go get</code> 根本编不过的问题——旧的 cgo 头路径落在模块根之外<br />
 （模块 zip 拿不到 <code>include/</code>），且参数读写直接写了 <code>cv.type</code>（<code>type</code> 是 Go 保留字）<br />
 与匿名 union 成员。<strong>旧路径任何时候都没有真正可用过。</strong></p>
+<p><strong>⚠️ 待补的 API（2026-09-15 记录，本次未实现）</strong></p>
+<p>Go 绑定落后于 C ABI，有 <strong>4 个函数尚未暴露</strong>。以后要用 Go 时按需补齐：</p>
+<table>
+<thead>
+<tr>
+<th>C ABI（头里已声明）</th>
+<th>归属</th>
+<th>Go 现状</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hik_cv_encode_jpeg</code></td>
+<td>相机</td>
+<td><code>hikcv</code> 无 → 需加 <code>EncodeJpeg</code></td>
+</tr>
+<tr>
+<td><code>hik_cr_get_bcr_image</code></td>
+<td>读码器</td>
+<td><code>hikcr</code> 无 → 需加 <code>GetBcrImage</code></td>
+</tr>
+<tr>
+<td><code>hik_cr_stop_grabbing</code></td>
+<td>读码器</td>
+<td><code>hikcr</code> 无 → 需加 <code>StopGrabbing</code></td>
+</tr>
+<tr>
+<td><code>hik_cr_set_frame_callback</code></td>
+<td>读码器</td>
+<td><code>hikcr</code> 无 → 需加 <code>SetFrameCallback</code></td>
+</tr>
+</tbody>
+</table>
+<p>现在 <code>go build ./...</code> 仍能通过（Go 侧根本没引用这些符号），所以这个缺口是<strong>静默</strong>的。</p>
+<p><strong>补之前必须先刷新 <code>runtime/</code> 的 wrapper</strong>：<code>runtime/include/hik_mvcamera/c_api.h</code><br />
+已声明 <code>hik_cv_encode_jpeg</code>，但 <code>runtime/windows-x86_64/lib/hik_mvcamera.lib</code> <strong>没有导出它</strong><br />
+——这就是 <code>scripts/verify-runtime.sh</code> 要抓的「头新库旧」。读码器侧 <code>runtime/</code> 的三个符号是齐的，<br />
+<strong>只有相机侧缺这一个</strong>。不先刷新，<code>hikcv</code> 一旦加上 <code>EncodeJpeg</code>，<code>go build</code> 会直接<strong>链接失败</strong>。</p>
 </blockquote>
 <p><strong>链接模型：构建期与运行期分开看。</strong></p>
 <p><strong>构建期</strong>只依赖本项目自己的东西——头在 <code>runtime/include</code>，导入库在<br />
