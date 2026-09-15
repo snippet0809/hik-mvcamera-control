@@ -7,7 +7,6 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -55,16 +54,22 @@ test('package 导出常量与类', (t) => {
   assert.equal(typeof hik.CameraOpenParams, 'function');
 });
 
-test('捆绑文件存在（_native 内 DLL）', (t) => {
+test('_native 只含本项目 wrapper，不捆绑厂商运行时', (t) => {
   if (skipIfNotLoaded(t)) return;
-  const dllCr = path.join(pkgRoot, '_native', 'hik_code_reader.dll');
-  const dllCv = path.join(pkgRoot, '_native', 'hik_mvcamera.dll');
-  const ctrlCr = path.join(pkgRoot, '_native', 'MvCodeReaderCtrl.dll');
-  const ctrlCv = path.join(pkgRoot, '_native', 'MvCameraControl.dll');
-  assert.ok(existsSync(dllCr), `缺少 ${dllCr}（npm run bundle）`);
-  assert.ok(existsSync(dllCv), `缺少 ${dllCv}（npm run bundle）`);
-  assert.ok(existsSync(ctrlCr), `缺少 ${ctrlCr}（海康读码器运行时，npm run bundle）`);
-  assert.ok(existsSync(ctrlCv), `缺少 ${ctrlCv}（海康相机运行时，npm run bundle）`);
+  // 与 runtime/VERSION 的 Windows 口径、以及 Go 绑定（hikcr.go 的注释）一致：包内只放
+  // 本项目自己的 wrapper，厂商运行时由使用方安装 MVS/IDMVS 提供、走安装器写的机器级 PATH。
+  //
+  // 这里曾经断言四个 DLL 都在（即"_native 全捆绑"）。2026-09-15 改为不捆绑：整棵 MVS 树
+  // 会把 tarball 从约 0.6MB 抬到 72.5MB（_native 176MB），那与既定分发模型矛盾。
+  // 若要复现离线全捆绑，设 HIK_BUNDLE_VENDOR_RUNTIME=1 重跑 npm run bundle。
+  for (const f of ['hik_code_reader.dll', 'hik_mvcamera.dll']) {
+    const p = path.join(pkgRoot, '_native', f);
+    assert.ok(existsSync(p), `缺少 ${p}（npm run bundle）`);
+  }
+  for (const f of ['MvCodeReaderCtrl.dll', 'MvCameraControl.dll']) {
+    const p = path.join(pkgRoot, '_native', f);
+    assert.ok(!existsSync(p), `${p} 不应随包分发——应由目标机安装 MVS/IDMVS 提供`);
+  }
 });
 
 test('diagnoseNativeLoad 报告 addon 已加载', (t) => {
@@ -216,29 +221,4 @@ test('相机 encodeJpeg 参数校验与未起流报错', (t) => {
     '未起流设备编码应抛 logic 错误'
   );
   // 注：编码成功路径（真实 JPEG 字节）无相机无法验证，需真机。
-});
-
-test('无 IDMVS/MVS 的 PATH 下仍能加载（全捆绑离线可用）', (t) => {
-  if (skipIfNotLoaded(t)) return;
-  const ctrlCv = path.join(pkgRoot, '_native', 'MvCameraControl.dll');
-  if (!existsSync(ctrlCv)) {
-    t.skip('_native 无海康相机运行时，跳过离线加载验证');
-    return;
-  }
-  // 构造剔除 MVS/IDMVS 项的 PATH，子进程 require 包并同时调读码器 + 相机
-  const filteredPath = (process.env.PATH || '')
-    .split(path.delimiter)
-    .filter((p) => !/mvs|idmvs|mvcode|hikrobot|mvvision/i.test(p))
-    .join(path.delimiter);
-  const script =
-    "const h=require('" + pkgRoot.replace(/\\/g, '\\\\') + "');" +
-    'const cr=new h.HikCodeReader();const cam=new h.HikCamera();' +
-    'process.stdout.write(JSON.stringify({d:cr.enumDevices(),c:cam.enumDevices()}));';
-  const out = execFileSync(process.execPath, ['-e', script], {
-    env: { ...process.env, PATH: filteredPath },
-    encoding: 'utf8',
-  });
-  const parsed = JSON.parse(out);
-  assert.ok(Array.isArray(parsed.d), '离线 PATH 下应能加载并枚举读码器');
-  assert.ok(Array.isArray(parsed.c), '离线 PATH 下应能加载并枚举相机');
 });

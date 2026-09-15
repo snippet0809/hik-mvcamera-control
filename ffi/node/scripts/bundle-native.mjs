@@ -1,15 +1,23 @@
 /**
  * @file bundle-native.mjs
- * @brief 把运行所需 DLL 拷入 `ffi/node/_native/`，实现"全捆绑"（工控机免装 MVS/IDMVS、免联网）。
+ * @brief 把**本项目自己的** wrapper DLL/导入库拷入 `ffi/node/_native/`。
  *
- * 统一包需同时捆绑读码器与相机运行时：
- *   1. 从根 CMake 构建产物拷 `hik_code_reader.dll/.lib` 与 `hik_mvcamera.dll/.lib`；
- *   2. 定位海康 **MVS 相机运行时**（含 `MvCameraControl.dll`），先整目录拷贝（force，胜出）；
- *   3. 定位海康 **读码器运行时**（含 `MvCodeReaderCtrl.dll`），后拷（跳过已存在的相对路径，补齐读码器专属文件）。
+ * 默认只拷根 CMake 的产物：`hik_code_reader.dll/.lib` 与 `hik_mvcamera.dll/.lib`。
  *
- * 去重策略：相机（MVS）运行时为官方基座，较新（如 `MvCameraControl.dll` IDMVS 1MB vs MVS 2MB），
- * 对共享同名 DLL 一律以 MVS 版本为准——Windows 进程内只加载一份 `MvCameraControl.dll`，
- * 读码器 SDK 本就设计为依赖 MVS 基座。去重键为完整相对路径（`ThirdParty/...` 子目录保留）。
+ * **厂商运行时（`MvCameraControl.dll` / `MvCodeReaderCtrl.dll` 及其依赖）默认不随包分发** ——
+ * 与 `runtime/VERSION` 的 Windows 口径、以及 Go 绑定（`hikcr/hikcr.go` 的注释）保持一致：
+ * 由使用方在目标机上安装 MVS/IDMVS，安装器写机器级 PATH，wrapper 的 PE 导入表在那里解析。
+ * 实测（2026-09-15）：`_native/` 只留两个 wrapper（480KB）时枚举与取流均正常，
+ * 厂商 DLL 全部从 `C:\Program Files (x86)\Common Files\MVS\...\Win64_x64\` 与
+ * `D:\IDMVS\...\plugins\mvsidcamctrl\` 解析。
+ *
+ * 若确有离线/免安装需求，可设 `HIK_BUNDLE_VENDOR_RUNTIME=1` 走旧的"全捆绑"路径：
+ *   1. 定位海康 **MVS 相机运行时**（含 `MvCameraControl.dll`），先整目录拷贝（force，胜出）；
+ *   2. 定位海康 **读码器运行时**（含 `MvCodeReaderCtrl.dll`），后拷（跳过已存在的相对路径，补齐读码器专属文件）。
+ *   去重策略：相机（MVS）运行时为官方基座，对共享同名 DLL 一律以 MVS 版本为准——Windows 进程内
+ *   只加载一份 `MvCameraControl.dll`，读码器 SDK 本就设计为依赖 MVS 基座；去重键为完整相对路径。
+ *   ⚠️ 这条路径会把整棵 MVS 树拷进来（实测 `_native/` 176MB、tarball 72.5MB），
+ *   且该体积会随 tarball 提交进使用方仓库——默认关闭正是为了避免这件事。
  *
  * 用法：`npm run bundle`（或 `node scripts/bundle-native.mjs`）。
  */
@@ -159,35 +167,40 @@ function copyTreeMerge(srcDir, destDir, skipExisting) {
   return { copied, skipped };
 }
 
-const cameraDirs = findRuntimeDirs('MvCameraControl.dll', CAMERA_SEARCH_ROOTS, true);
-const readerDirs = findRuntimeDirs('MvCodeReaderCtrl.dll', READER_SEARCH_ROOTS, false);
-
-if (cameraDirs.length === 0 && readerDirs.length === 0) {
-  console.warn('[bundle] 未找到海康相机（MvCameraControl.dll）与读码器（MvCodeReaderCtrl.dll）运行时。');
-  console.warn('[bundle] 请安装 IDMVS/MVS，或把运行时目录放入 _native/ 后重试。');
-  console.warn('[bundle] 已捆绑：' + (copiedFromCmake.join(', ') || '（无）'));
-  process.exit(0);
-}
-
-// 相机（MVS）运行时先拷（force，胜出），读码器运行时后拷（跳过已存在相对路径，补齐专属文件）
-if (cameraDirs.length > 0) {
-  const dir = cameraDirs[0];
-  if (resolve(dir).toLowerCase() !== resolve(nativeDir).toLowerCase()) {
-    const { copied } = copyTreeMerge(dir, nativeDir, false);
-    console.log(`[bundle] 海康 MVS 相机运行时 <- ${dir}（${copied} 文件）`);
-  }
+if (process.env.HIK_BUNDLE_VENDOR_RUNTIME !== '1') {
+  console.log('[bundle] 厂商运行时按设计不随包分发：目标机需安装 MVS/IDMVS（与 Go 绑定口径一致）。');
+  console.log('[bundle] 如需离线全捆绑，设 HIK_BUNDLE_VENDOR_RUNTIME=1 重跑（_native/ 会涨到约 176MB）。');
 } else {
-  console.warn('[bundle] 未找到相机运行时（MvCameraControl.dll），仅捆绑读码器部分。');
-}
+  const cameraDirs = findRuntimeDirs('MvCameraControl.dll', CAMERA_SEARCH_ROOTS, true);
+  const readerDirs = findRuntimeDirs('MvCodeReaderCtrl.dll', READER_SEARCH_ROOTS, false);
 
-if (readerDirs.length > 0) {
-  const dir = readerDirs[0];
-  if (resolve(dir).toLowerCase() !== resolve(nativeDir).toLowerCase()) {
-    const { copied, skipped } = copyTreeMerge(dir, nativeDir, true);
-    console.log(`[bundle] 海康读码器运行时 <- ${dir}（拷 ${copied}，跳过 ${skipped}）`);
+  if (cameraDirs.length === 0 && readerDirs.length === 0) {
+    console.warn('[bundle] 未找到海康相机（MvCameraControl.dll）与读码器（MvCodeReaderCtrl.dll）运行时。');
+    console.warn('[bundle] 请安装 IDMVS/MVS，或把运行时目录放入 _native/ 后重试。');
+    console.warn('[bundle] 已捆绑：' + (copiedFromCmake.join(', ') || '（无）'));
+    process.exit(0);
   }
-} else {
-  console.warn('[bundle] 未找到读码器运行时（MvCodeReaderCtrl.dll），仅捆绑相机部分。');
+
+  // 相机（MVS）运行时先拷（force，胜出），读码器运行时后拷（跳过已存在相对路径，补齐专属文件）
+  if (cameraDirs.length > 0) {
+    const dir = cameraDirs[0];
+    if (resolve(dir).toLowerCase() !== resolve(nativeDir).toLowerCase()) {
+      const { copied } = copyTreeMerge(dir, nativeDir, false);
+      console.log(`[bundle] 海康 MVS 相机运行时 <- ${dir}（${copied} 文件）`);
+    }
+  } else {
+    console.warn('[bundle] 未找到相机运行时（MvCameraControl.dll），仅捆绑读码器部分。');
+  }
+
+  if (readerDirs.length > 0) {
+    const dir = readerDirs[0];
+    if (resolve(dir).toLowerCase() !== resolve(nativeDir).toLowerCase()) {
+      const { copied, skipped } = copyTreeMerge(dir, nativeDir, true);
+      console.log(`[bundle] 海康读码器运行时 <- ${dir}（拷 ${copied}，跳过 ${skipped}）`);
+    }
+  } else {
+    console.warn('[bundle] 未找到读码器运行时（MvCodeReaderCtrl.dll），仅捆绑相机部分。');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,12 +216,12 @@ function countDlls(dir) {
 }
 
 const dllCount = countDlls(nativeDir);
-const missing = ['hik_code_reader.dll', 'hik_mvcamera.dll', 'MvCodeReaderCtrl.dll', 'MvCameraControl.dll'].filter(
-  (f) => !existsSync(join(nativeDir, f)),
-);
+// 只校验**本项目自己的** wrapper：厂商 DLL 默认不在包内，缺了要由目标机安装 MVS/IDMVS 提供，不在这里报。
+const missing = ['hik_code_reader.dll', 'hik_mvcamera.dll'].filter((f) => !existsSync(join(nativeDir, f)));
 console.log(`[bundle] _native/ 现有 ${dllCount} 个 DLL。`);
 if (missing.length === 0) {
-  console.log('[bundle] 捆绑完整：hik_code_reader.dll + hik_mvcamera.dll + 读码器/相机运行时均已就位。');
+  console.log('[bundle] 本项目 wrapper 已就位：hik_code_reader.dll + hik_mvcamera.dll。');
+  console.log('[bundle] 厂商运行时（MvCameraControl.dll / MvCodeReaderCtrl.dll）由目标机安装 MVS/IDMVS 提供。');
 } else {
-  console.warn('[bundle] 仍缺失：' + missing.join(', '));
+  console.warn('[bundle] 仍缺失本项目 wrapper：' + missing.join(', '));
 }

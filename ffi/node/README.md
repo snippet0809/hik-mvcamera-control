@@ -2,8 +2,11 @@
 
 海康**读码器（MvCodeReader）** 与**工业相机（MvCamera）** 的 **N-API 原生插件** + JS 封装，合并为**一个包**。
 链接同一个 `hik_code_reader.dll`（`hik_cr_*` C ABI）与 `hik_mvcamera.dll`（`hik_cv_*` C ABI），
-通过 **预编译 `.node`**（N-API，跨 Node 版本）与**海康读码器/相机运行时全捆绑**，
-让使用方免装 MSVC、免装 MVS/IDMVS、免联网。
+通过 **预编译 `.node`**（N-API，跨 Node 版本）与**随包的两个 wrapper DLL**，
+让使用方免装 MSVC、免联网。
+
+**厂商运行时（MVS/IDMVS）不随包分发**，需在目标机安装 —— 与 `runtime/VERSION` 的 Windows 口径、
+以及 Go 绑定（`hikcr/hikcr.go`）一致。理由与实测见下方「运行时来源」。
 
 ```js
 const { HikCodeReader, HikCamera } = require('hik-mvcamera-control');
@@ -21,7 +24,7 @@ const { HikCodeReader, HikCamera } = require('hik-mvcamera-control');
 ```powershell
 npm install                     # 拉取 node-addon-api / prebuildify / node-gyp-build
 npm run build:native            # 构建根 CMake 工程 → build/Release/（两个 DLL）
-npm run bundle                  # 合并捆绑两个 DLL + 读码器/相机运行时到 _native/
+npm run bundle                  # 把两个 wrapper DLL/导入库拷进 _native/（厂商运行时不拷，见下）
 npm run build:addon             # node-gyp rebuild → build/Release/hik_mvcamera_control.node
 npm run prebuild                # prebuildify --napi → prebuilds/win32-x64/hik-mvcamera-control.node
 npm test                        # 冒烟测试（无设备也应通过）
@@ -29,8 +32,8 @@ npm test                        # 冒烟测试（无设备也应通过）
 
 一键：`npm run build`（上面 4 步按序执行）。
 
-> 使用方**不需要**执行以上任何步骤：预编译 `.node` 与捆绑 DLL 随包分发，加载走
-> `node-gyp-build`（纯选文件，不编译）。
+> 使用方**不需要**执行以上任何步骤：预编译 `.node` 与两个 wrapper DLL 随包分发，加载走
+> `node-gyp-build`（纯选文件，不编译）。但**目标机必须已安装 MVS/IDMVS**。
 
 ## 使用
 
@@ -212,20 +215,37 @@ applyParams(sn);   // ← 关键：每次启动后重设
 - 若开启了自动曝光/自动增益，相机自身会覆盖手动 `setParam` 的值，属正常行为。
 - 需要"一次保存、每次上电自动恢复"时可考虑相机侧 **UserSet 持久化**（`UserSetSave` 命令节点），但当前包尚未暴露命令节点执行 API（后续可加 `runCommand`）。
 
-## 全捆绑说明
+## 运行时来源
 
-`npm run bundle`（`scripts/bundle-native.mjs`）会：
+### 默认：不随包分发厂商运行时
 
-1. 从根 CMake 构建拷 `hik_code_reader.dll/.lib` 与 `hik_mvcamera.dll/.lib`；
-2. 定位本机海康 **MVS 相机运行时**（`MvCameraControl.dll` 所在目录）整目录拷入（胜出）；
-3. 定位本机海康 **读码器运行时**（`MvCodeReaderCtrl.dll` 所在目录）补齐拷入（跳过已存在文件）。
+`npm run bundle`（`scripts/bundle-native.mjs`）**只**做一件事：把根 CMake 构建的
+`hik_code_reader.dll/.lib` 与 `hik_mvcamera.dll/.lib` 拷进 `_native/`（共约 480KB）。
 
-共享同名 DLL（`MvCameraControl.dll`、GenICam、CL-serial 等）以**较新的 MVS 版本为准**——
-Windows 进程内只加载一份，读码器 SDK 本就依赖 MVS 基座。去重按完整相对路径（`ThirdParty/` 子目录保留）。
+厂商运行时（`MvCameraControl.dll` / `MvCodeReaderCtrl.dll` 及其依赖）**由目标机安装 MVS/IDMVS 提供**，
+安装器写机器级 PATH，wrapper 的 PE 导入表在那里解析。加载时插件把 `_native/` 前置到 `PATH`
+（镜像 Python 包的 DLL 解析逻辑）。
 
-因此目标工控机**不需要**安装 MVS/IDMVS，也不需要运行时在 PATH 上——加载时插件会把
-`_native/` 前置到 `PATH`（镜像 Python 包的 DLL 解析逻辑）。
+这与 `runtime/VERSION` 的 Windows 口径、以及 Go 绑定（`hikcr/hikcr.go` 的注释「厂商读码器运行时
+由使用方自行安装 IDMVS 提供」）一致。
 
+**实测（2026-09-15）**：`_native/` 只留两个 wrapper 时，枚举与取流均正常，进程加载的厂商模块
+来自 `C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64\` 与
+`D:\IDMVS\Applications\Win64\plugins\mvsidcamctrl\`。
+
+### 可选：离线全捆绑（`HIK_BUNDLE_VENDOR_RUNTIME=1`）
+
+确有「工控机免装 MVS/IDMVS、免联网」需求时，设该环境变量重跑 `npm run bundle`，
+脚本会整目录合并两套运行时（相机 MVS 先拷胜出，读码器后拷补齐）：
+共享同名 DLL 以 MVS 版本为准——Windows 进程内只加载一份 `MvCameraControl.dll`，
+读码器 SDK 本就依赖 MVS 基座；去重按完整相对路径（`ThirdParty/` 子目录保留）。
+
+> ⚠️ 代价：`_native/` 会涨到约 **176MB**，tarball 约 **72.5MB**（实测），
+> 且该体积会随 tarball 提交进使用方仓库。默认关闭正是为了避免这件事。
+>
+> ⚠️ 另注意：不装 MVS 就没有 GigE 过滤驱动，取流须走 socket 模式
+> （`CameraOpenParams.net_trans_mode = 2`），该模式**尚未在真机验证过**。
+>
 > 打包分发前请确认海康运行时 DLL 的许可/分发政策符合你方要求。
 
 ## 结构
@@ -238,8 +258,8 @@ ffi/node/
 ├── src/addon.cc                 # N-API 插件入口（唯一 NODE_API_MODULE，注册 reader + camera）
 ├── src/reader_addon.cc          # 读码器部分（BCR 回调桥 + HIK_CR_*）
 ├── src/camera_addon.cc          # 相机部分（图像回调桥 + HIK_CV_*）
-├── scripts/bundle-native.mjs    # 全捆绑脚本（合并去重）
-├── _native/                     # 捆绑 DLL（构建产物，不入库）
+├── scripts/bundle-native.mjs    # 拷 wrapper DLL 进 _native/（厂商运行时默认不拷）
+├── _native/                     # wrapper DLL/导入库（构建产物，不入库）
 ├── prebuilds/                   # 预编译 .node（构建产物，不入库）
 └── test/api.test.mjs            # node:test 冒烟测试
 ```
