@@ -38,6 +38,17 @@ export interface ReaderStartDeviceOptions {
   clearBcr?: boolean;
 }
 
+/**
+ * `startDevices` 里单台设备的结果。逐台返回而不是整体抛错：调用方要按设备名一次报全故障。
+ * `error` 只在 `ok === false` 时存在；`ms` 是该台自己的耗时。
+ */
+export interface DeviceStartResult {
+  serial: string;
+  ok: boolean;
+  error?: string;
+  ms: number;
+}
+
 /** 读码成功帧的元数据（不含图像数据；数据经回调的 buffer 传递）。 */
 export interface ReaderFrameInfo {
   width: number;
@@ -72,6 +83,22 @@ export class HikCodeReader {
   enumDevices(): DeviceInfo[];
   /** 起流；已在取流时忽略 params，仅按 onBcr/clearBcr 更新 BCR。 */
   startDevice(sn: string, opts?: ReaderStartDeviceOptions): void;
+  /**
+   * **并发**起流多台读码器 → `Promise<DeviceStartResult[]>`（顺序同入参）。
+   *
+   * ⚠️ **与相机不同：这里不会把总耗时压成「最慢那台」。** 读码器 C 层的 `startDevice` 全程持有
+   * 设备锁（`src/code_reader/device_control.cpp` 的 `g_device_mutex`，锁一直拿到 `grabbing()`
+   * 返回），所以本方法派出的线程会在 C 层排队，墙钟仍是**各台耗时之和**。
+   *
+   * 它的收益是另外两条：**不占 JS 线程**（调用方是 Electron 主进程时，那段时间窗口会「点不动」，
+   * 这正是要避免的），以及**能与相机那批同时进行** —— 相机与读码器是两把不同的锁、两个 DLL，
+   * 故 `Promise.all([hikCamera.startDevices(...), hikReader.startDevices(...)])` 的总耗时
+   * ≈两批里较慢的那批，而不是全部相加。
+   *
+   * 不支持 `params`：批量路径用不到。
+   */
+  startDevices(serials: string[],
+               opts?: { onBcr?: BcrCallback | null; clearBcr?: boolean }): Promise<DeviceStartResult[]>;
   /** 停流；已登记的 BCR 回调保留。 */
   stopDevice(sn: string): void;
   /** 停流但保留连接（不 CloseDevice）；下次 startDevice 省掉重建句柄 + OpenDevice。 */
@@ -164,6 +191,19 @@ export class HikCamera {
    * `onFrame`/`clearFrame`，本方法抛 `logic_error`；要换回调请先 `stopDevice` 再 `startDevice`。
    */
   startDevice(sn: string, opts?: CameraStartDeviceOptions): void;
+  /**
+   * **并发**起流多台相机 → `Promise<DeviceStartResult[]>`（顺序同入参）。
+   *
+   * 开一台的耗时几乎全在一次 GigE 枚举上（C 层 `open()` 每次都要重新枚举全部设备，实测约
+   * 1.7 秒、**与设备类型和网段无关**），串行开 N 台就是 N 倍。这里各台跑在自己的线程上、
+   * 整体跑在 AsyncWorker 上；相机侧 C 层特意把设备表锁放开再做慢构造（见 `getOrCreateCamera`
+   * 的注释「持锁构造会把多台相机的起流重新串行化」），所以能**真正并行**：实测 4 台由
+   * 6.8 秒降到 2.8 秒（墙钟＝最慢那台），且不占 JS 线程。逐台返回结果、不整体抛错。
+   *
+   * 不支持 `params`：批量路径用不到（起流前的 GenICam 项由单台 `startDevice` 传）。
+   */
+  startDevices(serials: string[],
+               opts?: { onFrame?: FrameCallback | null; clearFrame?: boolean }): Promise<DeviceStartResult[]>;
   /** 停流；已登记的图像回调保留。 */
   stopDevice(sn: string): void;
   /** 软触发（须已 startDevice、处于取流且 TriggerMode=On）。 */

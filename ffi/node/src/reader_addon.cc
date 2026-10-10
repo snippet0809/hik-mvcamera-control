@@ -18,10 +18,12 @@
 #include "hik_code_reader/c_api.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -69,6 +71,31 @@ void releaseBcr(const std::string& serial) {
             old = it->second;
             g_bcr.erase(it);
         }
+    }
+    if (old) {
+        old->tsfn.Release();
+    }
+}
+
+/**
+ * 在 **JS 线程**上为该序列号建 TSFN 并登记（覆盖旧条目）。
+ *
+ * 单台与批量两条路共用。批量起流时必须在派线程**之前**把 TSFN 全部建好：
+ * 读码结果可能在起流过程中就开始回调，而 `napi_threadsafe_function` 只能在 JS 线程上创建。
+ */
+void registerBcrTsfn(Napi::Env env, const std::string& serial, Napi::Function fn) {
+    Napi::ThreadSafeFunction tsfn = Napi::ThreadSafeFunction::New(
+        env, fn, Napi::String::New(env, "hik-bcr"), 0, 1);
+    tsfn.Unref(env);  // 不保持事件循环存活（镜像 Python：回调不阻止进程退出）
+    std::shared_ptr<BcrEntry> old;
+    {
+        std::lock_guard<std::mutex> lk(g_bcrMutex);
+        auto it = g_bcr.find(serial);
+        if (it != g_bcr.end()) {
+            old = it->second;  // 覆盖旧条目
+            g_bcr.erase(it);
+        }
+        g_bcr.emplace(serial, std::make_shared<BcrEntry>(std::move(tsfn)));
     }
     if (old) {
         old->tsfn.Release();
@@ -329,22 +356,7 @@ Napi::Value StartDevice(const Napi::CallbackInfo& info) {
         if (info.Length() < 4 || !info[3].IsFunction()) {
             throw Napi::TypeError::New(env, "bcrAction=BCR_SET requires a callback function");
         }
-        Napi::ThreadSafeFunction tsfn = Napi::ThreadSafeFunction::New(
-            env, info[3].As<Napi::Function>(), Napi::String::New(env, "hik-bcr"), 0, 1);
-        tsfn.Unref(env);  // 不保持事件循环存活（镜像 Python：回调不阻止进程退出）
-        std::shared_ptr<BcrEntry> old;
-        {
-            std::lock_guard<std::mutex> lk(g_bcrMutex);
-            auto it = g_bcr.find(serial);
-            if (it != g_bcr.end()) {
-                old = it->second;  // 覆盖旧条目
-                g_bcr.erase(it);
-            }
-            g_bcr.emplace(serial, std::make_shared<BcrEntry>(std::move(tsfn)));
-        }
-        if (old) {
-            old->tsfn.Release();
-        }
+        registerBcrTsfn(env, serial, info[3].As<Napi::Function>());
         cCb = bcrBridge;
     } else if (bcrAction == HIK_CR_BCR_CLEAR) {
         releaseBcr(serial);
@@ -356,6 +368,150 @@ Napi::Value StartDevice(const Napi::CallbackInfo& info) {
         hik_cr_start_device(serial.c_str(), copenPtr, bcrAction, cCb, nullptr);
     check(env, r);
     return env.Undefined();
+}
+
+// ---------------------------------------------------------------------------
+// 批量起流：多台设备并发打开
+// ---------------------------------------------------------------------------
+
+/** 批量起流里每台的结果，原样回给 JS。 */
+struct DeviceStartOutcome {
+    std::string serial;
+    bool ok = false;
+    std::string error;
+    long long ms = 0;
+};
+
+/**
+ * 并发起流的 worker：`Execute` 跑在 libuv 线程池（不占 JS 线程），`OnOK` 回 JS 线程。
+ *
+ * `bcrAction == SET` 时 TSFN 已在 JS 线程上建好（见 `StartDevices`），这里只负责开设备——
+ * 读码结果可能在起流过程中就开始回调，TSFN 已就绪，不需要额外同步。
+ */
+class StartDevicesWorker : public Napi::AsyncWorker {
+public:
+    StartDevicesWorker(Napi::Env env, Napi::Promise::Deferred deferred,
+                       std::vector<std::string> serials, int bcrAction, HikCrBcrCallback cb)
+        : Napi::AsyncWorker(env), deferred_(deferred), serials_(std::move(serials)),
+          bcrAction_(bcrAction), cb_(cb) {}
+
+    void Execute() override {
+        outcomes_.resize(serials_.size());
+        std::vector<std::thread> threads;
+        threads.reserve(serials_.size());
+        for (size_t i = 0; i < serials_.size(); ++i) {
+            threads.emplace_back([this, i] {
+                DeviceStartOutcome& out = outcomes_[i];
+                out.serial = serials_[i];
+                const auto t0 = std::chrono::steady_clock::now();
+                const HikCrResult r =
+                        hik_cr_start_device(out.serial.c_str(), nullptr, bcrAction_, cb_, nullptr);
+                out.ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                if (r == HIK_CR_OK) {
+                    out.ok = true;
+                    return;
+                }
+                // ⚠️ g_err 是 thread_local：**必须在本线程里取**。回到 JS 线程再读是空串
+                // ——那正是 check() 的做法，所以这里不能复用它。
+                const size_t need = hik_cr_last_error_copy(nullptr, 0);
+                if (need > 1) {
+                    std::vector<char> buf(need);
+                    hik_cr_last_error_copy(buf.data(), buf.size());
+                    out.error = std::string(buf.data());
+                } else {
+                    out.error = "hik_cr error " + std::to_string(static_cast<int>(r));
+                }
+            });
+        }
+        for (auto& t : threads) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+    }
+
+    void OnOK() override {
+        Napi::Env env = Env();
+        Napi::Array arr = Napi::Array::New(env, outcomes_.size());
+        for (size_t i = 0; i < outcomes_.size(); ++i) {
+            Napi::Object o = Napi::Object::New(env);
+            o.Set("serial", Napi::String::New(env, outcomes_[i].serial));
+            o.Set("ok", Napi::Boolean::New(env, outcomes_[i].ok));
+            if (!outcomes_[i].ok) {
+                o.Set("error", Napi::String::New(env, outcomes_[i].error));
+            }
+            o.Set("ms", Napi::Number::New(env, static_cast<double>(outcomes_[i].ms)));
+            arr.Set(i, o);
+        }
+        deferred_.Resolve(arr);
+    }
+
+private:
+    Napi::Promise::Deferred deferred_;
+    std::vector<std::string> serials_;
+    int bcrAction_;
+    HikCrBcrCallback cb_;
+    std::vector<DeviceStartOutcome> outcomes_;
+};
+
+/**
+ * startDevices(serials, bcrAction, callbackOrNull) → Promise<[{serial, ok, error?, ms}]>
+ *
+ * 为什么要有批量版：起流整段原先同步占着 JS 线程 / Electron 主进程，窗口的输入路由就在那儿，
+ * 于是界面「点不动」。批量版整体跑在 AsyncWorker 上（不占 JS 线程），各台再各跑自己的
+ * `std::thread`，与相机侧同构。
+ *
+ * ⚠️ 与相机侧**唯一不能照搬**之处：相机侧 C 层 `getOrCreateCamera` 特意放开锁再做慢构造，
+ * 所以那里的并行能真正缩短墙钟（≈最慢那台）；读码器侧 C 层 `startDevice` 全程持
+ * `g_device_mutex`，各线程会在 C 层排队串行化。故这里的收益主要是「不占 JS 线程 / 主进程」，
+ * 而非墙钟。此处按相机侧结构镜像，不去动 C 层锁（放开锁是另一件事）。
+ *
+ * 逐台返回结果而不是整体抛错：调用方要按设备名报故障，得一次报全。
+ */
+Napi::Value StartDevices(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsArray()) {
+        throw Napi::TypeError::New(env, "startDevices(serials: string[], bcrAction, callback?)");
+    }
+    Napi::Array serialsArr = info[0].As<Napi::Array>();
+    std::vector<std::string> serials;
+    serials.reserve(serialsArr.Length());
+    for (uint32_t i = 0; i < serialsArr.Length(); ++i) {
+        Napi::Value v = serialsArr.Get(i);
+        if (!v.IsString()) {
+            throw Napi::TypeError::New(env, "serials must be an array of strings");
+        }
+        serials.push_back(v.As<Napi::String>().Utf8Value());
+    }
+    const int bcrAction = info[1].As<Napi::Number>().Int32Value();
+    if (bcrAction != HIK_CR_BCR_KEEP && bcrAction != HIK_CR_BCR_SET && bcrAction != HIK_CR_BCR_CLEAR) {
+        throw Napi::TypeError::New(env, "bcrAction must be BCR_KEEP, BCR_SET, or BCR_CLEAR");
+    }
+
+    HikCrBcrCallback cCb = nullptr;
+    if (bcrAction == HIK_CR_BCR_SET) {
+        if (info.Length() < 3 || !info[2].IsFunction()) {
+            throw Napi::TypeError::New(env, "bcrAction=BCR_SET requires a callback function");
+        }
+        // 派线程**之前**把 TSFN 全部建好（只能在 JS 线程建，理由见 registerBcrTsfn）
+        Napi::Function fn = info[2].As<Napi::Function>();
+        for (const auto& serial : serials) {
+            registerBcrTsfn(env, serial, fn);
+        }
+        cCb = bcrBridge;
+    } else if (bcrAction == HIK_CR_BCR_CLEAR) {
+        for (const auto& serial : serials) {
+            releaseBcr(serial);
+        }
+        cCb = nullptr;  // C 侧按 CLEAR 语义清除 C++ 回调表
+    }
+    // KEEP：cCb 保持 nullptr（C 侧忽略）
+
+    Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+    auto* worker = new StartDevicesWorker(env, deferred, std::move(serials), bcrAction, cCb);
+    worker->Queue();
+    return deferred.Promise();
 }
 
 Napi::Value StopDevice(const Napi::CallbackInfo& info) {
@@ -583,6 +739,7 @@ Napi::Value LastError(const Napi::CallbackInfo& info) {
 Napi::Object RegisterReader(Napi::Env env, Napi::Object exports) {
     exports.Set("enumDevices", Napi::Function::New(env, EnumDevices));
     exports.Set("startDevice", Napi::Function::New(env, StartDevice));
+    exports.Set("startDevices", Napi::Function::New(env, StartDevices));
     exports.Set("stopDevice", Napi::Function::New(env, StopDevice));
     exports.Set("stopGrabbing", Napi::Function::New(env, StopGrabbing));
     exports.Set("triggerDevice", Napi::Function::New(env, TriggerDevice));

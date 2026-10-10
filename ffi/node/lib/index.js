@@ -252,6 +252,47 @@ class HikCodeReader {
     readerNative.startDevice(sn, nativeParams, HIK_CR_BCR_KEEP, null);
   }
 
+  /**
+   * 并发起流多台读码器 → Promise<[{serial, ok, error?, ms}]>。
+   *
+   * 为什么需要：起流整段原先同步占着 JS 线程（调用方是 Electron 主进程），窗口会「点不动」。
+   * 这里整体跑在 AsyncWorker 上（不占 JS 线程），各台再各跑自己的线程，与 `HikCamera.startDevices` 同构。
+   * ⚠️ 读码器 C 层 `startDevice` 全程持 `g_device_mutex`，各线程会在 C 层串行化——收益主要在
+   * 「不占 JS 线程」，而非墙钟缩短；详见原生 `startDevices` 的注释。
+   *
+   * 逐台返回结果而不是抛错：调用方要按设备名报故障，得一次报全。
+   *
+   * @param {string[]} serials 序列号列表
+   * @param {object} [opts]
+   * @param {Function} [opts.onBcr] 注册 BCR 回调（多台共用同一个，回调第一参是序列号）
+   * @param {boolean} [opts.clearBcr] 清除各序列号已登记的 BCR 回调
+   */
+  startDevices(serials, opts = {}) {
+    if (!Array.isArray(serials) || serials.some((sn) => typeof sn !== 'string' || sn.length === 0)) {
+      throw new TypeError('serials must be a non-empty array of non-empty strings');
+    }
+    const { onBcr = null, clearBcr = false } = opts || {};
+    if (clearBcr && onBcr != null) {
+      throw new Error('clearBcr 与 onBcr 不可同时指定');
+    }
+    if (clearBcr) {
+      for (const sn of serials) {
+        this._bcrKeepalive.delete(sn);
+      }
+      return readerNative.startDevices(serials, HIK_CR_BCR_CLEAR, null);
+    }
+    if (onBcr != null) {
+      if (typeof onBcr !== 'function') {
+        throw new TypeError('onBcr must be a function');
+      }
+      for (const sn of serials) {
+        this._bcrKeepalive.set(sn, onBcr);
+      }
+      return readerNative.startDevices(serials, HIK_CR_BCR_SET, onBcr);
+    }
+    return readerNative.startDevices(serials, HIK_CR_BCR_KEEP, null);
+  }
+
   /** 停流；已登记的 BCR 回调保留（与 Python/Go 行为一致）。 */
   stopDevice(sn) {
     readerNative.stopDevice(sn);
@@ -404,6 +445,47 @@ class HikCamera {
       return;
     }
     cameraNative.startDevice(sn, nativeParams, HIK_CV_FRAME_KEEP, null);
+  }
+
+  /**
+   * 并发起流多台相机 → Promise<[{serial, ok, error?, ms}]>。
+   *
+   * 为什么需要：开一台设备的耗时几乎全在 `MV_CC_EnumDevices` 上（C 层的 open() 每次都要
+   * 重新枚举全部设备），一次 GigE 枚举实测约 1.7 秒、与设备类型和网段无关。串行开 N 台
+   * 就是 N × 1.55 秒，而这段时间调用方（Electron 主进程）是被占住的——窗口会「点不动」。
+   * 这里各台跑在自己的线程上、整体跑在 AsyncWorker 上，墙钟≈最慢那台，且不占 JS 线程。
+   *
+   * 逐台返回结果而不是抛错：调用方要按设备名报故障，得一次报全。
+   *
+   * @param {string[]} serials 序列号列表
+   * @param {object} [opts]
+   * @param {Function} [opts.onFrame] 注册图像回调（多台共用同一个，回调第一参是序列号）
+   * @param {boolean} [opts.clearFrame] 清除各序列号已登记的回调
+   */
+  startDevices(serials, opts = {}) {
+    if (!Array.isArray(serials) || serials.some((sn) => typeof sn !== 'string' || sn.length === 0)) {
+      throw new TypeError('serials must be a non-empty array of non-empty strings');
+    }
+    const { onFrame = null, clearFrame = false } = opts || {};
+    if (clearFrame && onFrame != null) {
+      throw new Error('clearFrame 与 onFrame 不可同时指定');
+    }
+    if (clearFrame) {
+      for (const sn of serials) {
+        this._frameKeepalive.delete(sn);
+      }
+      return cameraNative.startDevices(serials, HIK_CV_FRAME_CLEAR, null);
+    }
+    if (onFrame != null) {
+      if (typeof onFrame !== 'function') {
+        throw new TypeError('onFrame must be a function');
+      }
+      for (const sn of serials) {
+        this._frameKeepalive.set(sn, onFrame);
+      }
+      return cameraNative.startDevices(serials, HIK_CV_FRAME_SET, onFrame);
+    }
+    return cameraNative.startDevices(serials, HIK_CV_FRAME_KEEP, null);
   }
 
   /** 停流；已登记的图像回调保留（与读码器 BCR 行为一致）。 */

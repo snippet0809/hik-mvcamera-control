@@ -16,11 +16,13 @@
 
 #include "hik_mvcamera/c_api.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -67,6 +69,31 @@ void releaseFrame(const std::string& serial) {
             old = it->second;
             g_frames.erase(it);
         }
+    }
+    if (old) {
+        old->tsfn.Release();
+    }
+}
+
+/**
+ * 在 **JS 线程**上为该序列号建 TSFN 并登记（覆盖旧条目）。
+ *
+ * 单台与批量两条路共用。批量起流时必须在派线程**之前**把 TSFN 全部建好：
+ * 帧可能在起流过程中就开始回调，而 `napi_threadsafe_function` 只能在 JS 线程上创建。
+ */
+void registerFrameTsfn(Napi::Env env, const std::string& serial, Napi::Function fn) {
+    Napi::ThreadSafeFunction tsfn = Napi::ThreadSafeFunction::New(
+        env, fn, Napi::String::New(env, "hik-cv-frame"), 0, 1);
+    tsfn.Unref(env);
+    std::shared_ptr<FrameEntry> old;
+    {
+        std::lock_guard<std::mutex> lk(g_framesMutex);
+        auto it = g_frames.find(serial);
+        if (it != g_frames.end()) {
+            old = it->second;  // 覆盖旧条目
+            g_frames.erase(it);
+        }
+        g_frames.emplace(serial, std::make_shared<FrameEntry>(std::move(tsfn)));
     }
     if (old) {
         old->tsfn.Release();
@@ -221,22 +248,7 @@ Napi::Value StartDevice(const Napi::CallbackInfo& info) {
         if (info.Length() < 4 || !info[3].IsFunction()) {
             throw Napi::TypeError::New(env, "frameAction=FRAME_SET requires a callback function");
         }
-        Napi::ThreadSafeFunction tsfn = Napi::ThreadSafeFunction::New(
-            env, info[3].As<Napi::Function>(), Napi::String::New(env, "hik-cv-frame"), 0, 1);
-        tsfn.Unref(env);
-        std::shared_ptr<FrameEntry> old;
-        {
-            std::lock_guard<std::mutex> lk(g_framesMutex);
-            auto it = g_frames.find(serial);
-            if (it != g_frames.end()) {
-                old = it->second;  // 覆盖旧条目
-                g_frames.erase(it);
-            }
-            g_frames.emplace(serial, std::make_shared<FrameEntry>(std::move(tsfn)));
-        }
-        if (old) {
-            old->tsfn.Release();
-        }
+        registerFrameTsfn(env, serial, info[3].As<Napi::Function>());
         cCb = frameBridge;
     } else if (frameAction == HIK_CV_FRAME_CLEAR) {
         releaseFrame(serial);
@@ -247,6 +259,153 @@ Napi::Value StartDevice(const Napi::CallbackInfo& info) {
     const HikCvResult r = hik_cv_start_device(serial.c_str(), copenPtr, frameAction, cCb, nullptr);
     check(env, r);
     return env.Undefined();
+}
+
+// ---------------------------------------------------------------------------
+// 批量起流：多台设备并发打开
+// ---------------------------------------------------------------------------
+
+/** 批量起流里每台的结果，原样回给 JS。 */
+struct DeviceStartOutcome {
+    std::string serial;
+    bool ok = false;
+    std::string error;
+    long long ms = 0;
+};
+
+/**
+ * 并发起流的 worker：`Execute` 跑在 libuv 线程池（不占 JS 线程），`OnOK` 回 JS 线程。
+ *
+ * `frameAction == SET` 时 TSFN 已在 JS 线程上建好（见 `StartDevices`），这里只负责开设备——
+ * 帧可能在起流过程中就开始回调，TSFN 已就绪，不需要额外同步。
+ */
+class StartDevicesWorker : public Napi::AsyncWorker {
+public:
+    StartDevicesWorker(Napi::Env env, Napi::Promise::Deferred deferred,
+                       std::vector<std::string> serials, int frameAction, HikCvFrameCallback cb)
+        : Napi::AsyncWorker(env), deferred_(deferred), serials_(std::move(serials)),
+          frameAction_(frameAction), cb_(cb) {}
+
+    void Execute() override {
+        outcomes_.resize(serials_.size());
+        std::vector<std::thread> threads;
+        threads.reserve(serials_.size());
+        for (size_t i = 0; i < serials_.size(); ++i) {
+            threads.emplace_back([this, i] {
+                DeviceStartOutcome& out = outcomes_[i];
+                out.serial = serials_[i];
+                const auto t0 = std::chrono::steady_clock::now();
+                const HikCvResult r =
+                        hik_cv_start_device(out.serial.c_str(), nullptr, frameAction_, cb_, nullptr);
+                out.ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                if (r == HIK_CV_OK) {
+                    out.ok = true;
+                    return;
+                }
+                // ⚠️ g_err 是 thread_local：**必须在本线程里取**。回到 JS 线程再读是空串
+                // ——那正是 check() 的做法，所以这里不能复用它。
+                const size_t need = hik_cv_last_error_copy(nullptr, 0);
+                if (need > 1) {
+                    std::vector<char> buf(need);
+                    hik_cv_last_error_copy(buf.data(), buf.size());
+                    out.error = std::string(buf.data());
+                } else {
+                    out.error = "hik_cv error " + std::to_string(static_cast<int>(r));
+                }
+            });
+        }
+        for (auto& t : threads) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+    }
+
+    void OnOK() override {
+        Napi::Env env = Env();
+        Napi::Array arr = Napi::Array::New(env, outcomes_.size());
+        for (size_t i = 0; i < outcomes_.size(); ++i) {
+            Napi::Object o = Napi::Object::New(env);
+            o.Set("serial", Napi::String::New(env, outcomes_[i].serial));
+            o.Set("ok", Napi::Boolean::New(env, outcomes_[i].ok));
+            if (!outcomes_[i].ok) {
+                o.Set("error", Napi::String::New(env, outcomes_[i].error));
+            }
+            o.Set("ms", Napi::Number::New(env, static_cast<double>(outcomes_[i].ms)));
+            arr.Set(i, o);
+        }
+        deferred_.Resolve(arr);
+    }
+
+private:
+    Napi::Promise::Deferred deferred_;
+    std::vector<std::string> serials_;
+    int frameAction_;
+    HikCvFrameCallback cb_;
+    std::vector<DeviceStartOutcome> outcomes_;
+};
+
+/**
+ * startDevices(serials, frameAction, callbackOrNull) → Promise<[{serial, ok, error?, ms}]>
+ *
+ * 为什么要有批量版：**开一台设备的耗时几乎全在 `MV_CC_EnumDevices` 上** —— C 层的 `open()`
+ * 每次都要重新枚举全部设备（其注释说明了原因：MVS 句柄引用枚举结果缓冲区），而一次 GigE
+ * 枚举实测约 1.7 秒，**与设备类型和网段都无关**。六台串行开就是 6 × 1.55s ≈ 9.3 秒；而这段
+ * 时间原先整个占着 JS 线程 / Electron 主进程，窗口的输入路由就在那儿，于是界面「点不动」。
+ *
+ * 批量版把各台放进自己的 `std::thread` 并行开，并跑在 AsyncWorker 上，于是墙钟≈**最慢那台**
+ * （约 1.6 秒）而不是总和，且主进程全程不阻塞。
+ *
+ * 并发安全由 C 层保证，不是这里赌的：`getOrCreateCamera` 特意把锁放开再做慢构造（见其注释
+ * 「持锁构造会把多台相机的起流重新串行化」——那句话只有按并发设计才成立）、回调注册表有互斥锁、
+ * 错误缓冲区是 `thread_local`。
+ *
+ * 逐台返回结果而不是整体抛错：调用方要按设备名报故障，得一次报全。
+ */
+Napi::Value StartDevices(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsArray()) {
+        throw Napi::TypeError::New(env, "startDevices(serials: string[], frameAction, callback?)");
+    }
+    Napi::Array serialsArr = info[0].As<Napi::Array>();
+    std::vector<std::string> serials;
+    serials.reserve(serialsArr.Length());
+    for (uint32_t i = 0; i < serialsArr.Length(); ++i) {
+        Napi::Value v = serialsArr.Get(i);
+        if (!v.IsString()) {
+            throw Napi::TypeError::New(env, "serials must be an array of strings");
+        }
+        serials.push_back(v.As<Napi::String>().Utf8Value());
+    }
+    const int frameAction = info[1].As<Napi::Number>().Int32Value();
+    if (frameAction != HIK_CV_FRAME_KEEP && frameAction != HIK_CV_FRAME_SET && frameAction != HIK_CV_FRAME_CLEAR) {
+        throw Napi::TypeError::New(env, "frameAction must be FRAME_KEEP, FRAME_SET, or FRAME_CLEAR");
+    }
+
+    HikCvFrameCallback cCb = nullptr;
+    if (frameAction == HIK_CV_FRAME_SET) {
+        if (info.Length() < 3 || !info[2].IsFunction()) {
+            throw Napi::TypeError::New(env, "frameAction=FRAME_SET requires a callback function");
+        }
+        // 派线程**之前**把 TSFN 全部建好（只能在 JS 线程建，理由见 registerFrameTsfn）
+        Napi::Function fn = info[2].As<Napi::Function>();
+        for (const auto& serial : serials) {
+            registerFrameTsfn(env, serial, fn);
+        }
+        cCb = frameBridge;
+    } else if (frameAction == HIK_CV_FRAME_CLEAR) {
+        for (const auto& serial : serials) {
+            releaseFrame(serial);
+        }
+        cCb = nullptr;  // C 侧按 CLEAR 语义清除 C++ 回调表
+    }
+    // KEEP：cCb 保持 nullptr（C 侧忽略）
+
+    Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+    auto* worker = new StartDevicesWorker(env, deferred, std::move(serials), frameAction, cCb);
+    worker->Queue();
+    return deferred.Promise();
 }
 
 Napi::Value StopDevice(const Napi::CallbackInfo& info) {
@@ -457,6 +616,7 @@ Napi::Value LastError(const Napi::CallbackInfo& info) {
 Napi::Object RegisterCamera(Napi::Env env, Napi::Object exports) {
     exports.Set("enumDevices", Napi::Function::New(env, EnumDevices));
     exports.Set("startDevice", Napi::Function::New(env, StartDevice));
+    exports.Set("startDevices", Napi::Function::New(env, StartDevices));
     exports.Set("stopDevice", Napi::Function::New(env, StopDevice));
     exports.Set("triggerDevice", Napi::Function::New(env, TriggerDevice));
     exports.Set("setParam", Napi::Function::New(env, SetParam));
