@@ -102,7 +102,9 @@ GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代
 
 ### Python 开发者
 
-**环境**：当前 wheel 为 **Windows x64**（文件名中含 **`win_amd64`**），需在对应环境安装。
+**环境**：wheel 带平台标签，两个平台各一个——Windows x64（**`win_amd64`**）、Linux x86_64
+（**`linux_x86_64`**）。装错平台 pip 会直接拒绝（"not a supported wheel on this platform"），
+不会出现"装上了但加载不了"。
 
 **方式 A：从 GitHub Release 直链安装 wheel（不依赖 Pages，最省事）**  
 
@@ -143,6 +145,80 @@ print(cr.enum_devices())
 - 若你要 **免安装分发**：在你方**固定版本、可复现**的打包环境（例如已装对应 MVS 的 **自托管 Runner**、或从**私有制品库**取与 SDK 锁定的 DLL 集）里组装配应用，**不要**依赖「开发 SDK 的那台 PC」是否装了 Runtime。  
 - **Python（Windows）**在 `ctypes` 加载前：将 **`hik_code_reader.dll` 所在目录**置于 **`PATH` 与 `add_dll_directory` 优先**，再补充上述海康变量与 **`Path`** 中含 **`MVS` / `IDMVS` / `MvSDK` / `MvCode`** 的目录；并使用 **`LoadLibraryEx`** 标志，便于把 **`MvCodeReaderCtrl.dll`** 等与 `hik_code_reader.dll` **放在同一目录**时能被解析。  
 - 若仍失败：用依赖查看工具打开 **`hik_code_reader.dll`** 核对缺失的 `.dll`；并确认 **VC++ x64 运行库**已安装。
+
+### Python（Linux x86_64 / Debian 12）
+
+Linux 的分发模型和 Windows **相反**：厂商运行时**随 wheel 走**，使用方**不需要安装 MVS / IDMVS**，
+也不需要管理员权限或重启（Linux 侧 GigE 直接走内核 UDP 栈，没有那个签名过滤驱动）。
+
+```bash
+# 从 Release 附件（或 Actions 的 linux-wheel artifact）取 wheel，离线安装
+pip install hik_mvcamera_control-0.3.0-py3-none-linux_x86_64.whl
+```
+
+```python
+from hik_mvcamera_control import HikCamera, HikCodeReader
+
+cam = HikCamera()          # wheel 内 libhik_mvcamera.so；厂商 .so 在同目录，$ORIGIN 解析
+print(cam.enum_devices())
+```
+
+**wheel 为什么是 `linux_x86_64` 而不是 `manylinux`**：这是内部分发（Release 附件 + 本地
+wheelhouse），不走 PyPI，不需要 `auditwheel` 那套可移植性审计；用平台标签就够，前提是
+**构建机与目标机同为 x86_64**、glibc 不高于目标机（Debian 12 = glibc 2.36，CI 的
+ubuntu-latest 目前是 2.39，因此**正式包应在 Debian 12 上构建**，或在 CI 里降到
+`ubuntu-22.04`/容器）。
+
+**从源码构建**（Debian 12）：
+
+```bash
+sudo apt-get install -y build-essential cmake ninja-build python3-venv python3-pip
+bash scripts/build_linux_wheel.sh          # 编 .so → 校验 RPATH/导出符号 → 组装 wheel → venv 冒烟
+```
+
+`scripts/build_linux_wheel.sh` 末尾的冒烟会打印 `preloaded: N/M 成功`：没有任何硬件时，
+**枚举失败是预期的**，但要求「预加载全绿 + `bundled_exists=True`」——这两条过了，
+说明 `_native/` 与 dlopen 链路是通的，剩下的问题才在设备/网络侧。
+
+**为什么不用 `python -m build` 出 Linux 包**：`python/hik_mvcamera_control/setup.cfg` 里
+`[bdist_wheel] plat_name = win_amd64` 是给 Windows 发版写死的，同一个配置在 Linux 上会产出
+`win_amd64` 标签的包；Linux 侧改走 `scripts/assemble_linux_wheel.py`（zip + 元数据，
+时间戳可复现，打包前校验 19 个运行时文件是否带全）。
+
+**`_native/` 里为什么既有 wrapper 又有 14 个厂商 `.so`**：wrapper 的 `DT_RPATH` 是
+`$ORIGIN`（CMake 里 `--disable-new-dtags` 强制成 RPATH，而不是不被传递依赖继承的
+RUNPATH），所以两者同目录才能解析；分开摆会在 `HikCamera()` 就抛
+`libMvCameraControl.so: cannot open shared object file`。
+
+还有一层 Python 特有的坑：Python 主程序是 `python3`、**自身没有 RPATH**，而厂商库内部会
+按名字 `dlopen` 一批库（`libMvSmtDevCtrl.so` 等，既不在 `DT_NEEDED` 也不在 `strings` 里），
+这些只能靠 ld.so 的搜索路径。`_dll_utils` 因此在加载 wrapper 前按依赖顺序用
+`RTLD_GLOBAL` **预加载**这 14 个库；启动脚本里再导出 `LD_LIBRARY_PATH` 作为双保险
+（进程内改 `LD_LIBRARY_PATH` 无效——ld.so 在 `_start` 之前就固化了解析路径）。
+
+**排障**：`python -m hik_mvcamera_control` 无入口，直接调诊断函数——
+
+```python
+from hik_mvcamera_control import diagnose_camera_linux_native_load, diagnose_runtime_search_context
+
+print(diagnose_runtime_search_context())   # native_lib / bundled_exists / runtime_dirs / preloaded
+for row in diagnose_camera_linux_native_load():
+    print(row)                             # preload:* 与 dlopen_* 逐条 ok/error
+```
+
+判读：
+- 某条 `preload:*` 失败且含 `cannot open shared object file` → wheel 的 `_native/` 缺文件（或该库自己的依赖缺失）；
+- 厂商库全绿、`dlopen_*` 失败 → wrapper 与运行时不在同目录，或构建时漏了 `INSTALL_RPATH=$ORIGIN`；
+- 全绿但枚举报错 → 已进入 SDK 层（网卡/IP 冲突/巨帧），不在加载器范围内，用 `cmd/hikprobe` 对照。
+
+**与 Go 的差异（同样是消费这套 .so，机制不同）**：Go 的可执行文件在链接期就写死
+`DT_RPATH=$ORIGIN/runtime/linux-x86_64/lib`，`ld.so` 在进程启动时解析完 `DT_NEEDED`，
+所以 Go 侧**不需要**预加载；Python 是运行时 `dlopen`，才需要上面那一步。两边共用同一个
+`runtime/`，所以「随包分发、免安装」这条对两者都成立。
+
+**版本纪律**：`runtime/linux-x86_64/lib` 里提交的 `.so` 可能落后于最新源码（历史上有过
+Linux wrapper 落后 Windows DLL 一个版本的情况）。**正式发版以 CI 的 `build-linux` 作业产物为准**
+（它用当前源码重编 `.so` 再组装 wheel），仓库里提交的那份只用于"没有 Linux 编译环境时也能出包"。
 
 ### Go 开发者
 
@@ -287,7 +363,7 @@ readelf -d hikprobe | grep -i rpath   # 先确认是字面 $ORIGIN，见上文�
 
 | Workflow | 说明 |
 |----------|------|
-| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件（含**运行时包** `runtime/`）、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）；`build-linux` 作业另建 Linux `.so` 并跑 `verify-runtime.sh`。 |
+| **Release**（`.github/workflows/release.yml`） | 推送 **`v*.*.*`**：**GitHub Release** 附件（含**运行时包** `runtime/`）、**gh-pages**（更新 **pip** 用 `simple/` 与根目录 **README 页**）；`build-linux` 作业另建 Linux `.so` 与 **Linux wheel**（`linux-wheel` artifact，发版后由 `attach-linux-wheel` 挂到同一个 Release），并跑 `verify-runtime.sh`。 |
 | **Pages (README)**（`.github/workflows/pages-readme.yml`） | 推送到 `main`/`master` 且变更 **`README.md`** 或 **`.github/scripts/`** 下站点生成脚本时：只重部署 **根 `index.html`**（入口为 **`generate_pages_site.py`**），`keep_files` 保留 **`simple/`**。 |
 
 ## 仓库结构

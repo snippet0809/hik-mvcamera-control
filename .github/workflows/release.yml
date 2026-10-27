@@ -134,10 +134,23 @@ jobs:
       - name: Verify committed runtime (hash + ABI triples)
         run: bash scripts/verify-runtime.sh
 
+      # 用刚编出来的 wrapper 覆盖 runtime 里的同名 .so，再组装 wheel：
+      # 保证发出去的 linux wheel 里的 wrapper 与本次源码同源（提交的 runtime 可能落后一个
+      # wrapper 版本，历史上有过 Linux .so 落后于 Windows DLL 的情况）。
+      - name: Assemble Linux wheel
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 scripts/assemble_linux_wheel.py --built-dir build --out dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-so
           path: build/libhik_*.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-wheel
+          path: dist/*.whl
 
   publish-release-pages:
     needs: build-windows
@@ -233,3 +246,20 @@ jobs:
           publish_dir: ./site
           force_orphan: false
           keep_files: true
+
+  # Linux wheel 作为独立附件挂到同一个 Release。
+  # 不进 gh-pages 的 simple/ 索引：那里是给 pip 用的 Windows wheel，两个平台混在
+  # 一个索引里，`pip install hik-code-reader` 会挑到当前平台装不上的那个。
+  attach-linux-wheel:
+    needs: publish-release-pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-wheel
+          path: dist
+
+      - name: Upload Linux wheel to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" dist/*.whl --clobber

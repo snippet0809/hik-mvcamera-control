@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hik-mvcamera-control"
-version = "0.2.0"
-description = "ctypes bindings for Hikrobot MVS camera (MvCamera) + code reader (MvCodeReader) C API — Windows x64 wheel ships native DLLs"
+version = "0.3.0"
+description = "ctypes bindings for Hikrobot MVS camera (MvCamera) + code reader (MvCodeReader) C API — Windows x64 ships native DLLs, Linux x86_64 ships .so + bundled vendor runtime"
 readme = "README.md"
 requires-python = ">=3.10"
 # SPDX 表达式（setuptools 弃用 table 形式 license）；具体说明见仓库 README / 海康 SDK 许可。
@@ -18,6 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
   "Topic :: System :: Hardware :: Hardware Drivers",
 ]
 
@@ -29,5 +30,7 @@ where = ["."]
 include = ["hik_mvcamera_control*"]
 
 [tool.setuptools.package-data]
-# DLL：运行时；*.lib：海康读码器/相机 SDK 导入库，便于在本机链其它原生代码；许可以海康为准。
-hik_mvcamera_control = ["_native/*.dll", "_native/*.lib", "_native/.gitkeep"]
+# Windows：DLL + 导入库（许可以海康为准）。
+# Linux：wrapper .so 与**同目录**的厂商运行时（19 个文件），靠 DT_RPATH=$ORIGIN 解析；
+#        该平台的 wheel 由 scripts/assemble_linux_wheel.py 组装（setup.cfg 的 plat_name 是 win_amd64）。
+hik_mvcamera_control = ["_native/*.dll", "_native/*.lib", "_native/*.so", "_native/*.ini", "_native/*.cti", "_native/.gitkeep"]
