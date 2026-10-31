@@ -12,7 +12,7 @@ from ctypes import CFUNCTYPE, POINTER, Structure, byref, c_char_p, c_int, c_size
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import _dll_utils
+from . import _dll_utils, _hid
 
 __all__ = [
     "BcrCallback",
@@ -88,6 +88,7 @@ class HikCodeReader:
             _HIK_CR_DLL_NAME, _HIK_CR_ENV_VAR, _HIK_CR_RUNTIME_DLLS, dll_path
         )
         self._bcr_keepalive: dict[str, BcrCallback] = {}
+        self._hid = _hid.HidRegistry()
         self._setup_prototypes()
 
     def _setup_prototypes(self) -> None:
@@ -118,24 +119,38 @@ class HikCodeReader:
             raise OSError(code, self.last_error())
 
     def enum_devices(self) -> list[tuple[str, str, str]]:
-        """枚举在线读码器，返回 (序列号, GigE 导出 IP, 型号)。"""
-        arr = POINTER(HikCrDeviceInfo)()
-        n = c_int(0)
-        self.check(self._lib.hik_cr_enum_devices(ctypes.byref(arr), ctypes.byref(n)))
+        """枚举在线读码器，返回 (序列号, GigE 导出 IP, 型号)。
+
+        Linux 上会额外合并 HID 键盘型 USB 读码器（型号 ``MV-IDHID-USB``，
+        IP 为空串）；它们不走厂商 SDK，由 ``_hid`` 直接读 ``/dev/input/event*``。
+        """
+        hid = self._hid.refresh()
         try:
-            out: list[tuple[str, str, str]] = []
-            for i in range(n.value):
-                d = arr[i]
-                out.append(
-                    (
-                        d.serial_number.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
-                        d.net_export_ip.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
-                        d.model_name.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
+            arr = POINTER(HikCrDeviceInfo)()
+            n = c_int(0)
+            self.check(self._lib.hik_cr_enum_devices(ctypes.byref(arr), ctypes.byref(n)))
+            try:
+                out: list[tuple[str, str, str]] = []
+                for i in range(n.value):
+                    d = arr[i]
+                    out.append(
+                        (
+                            d.serial_number.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
+                            d.net_export_ip.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
+                            d.model_name.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
+                        )
                     )
-                )
-            return out
-        finally:
-            self._lib.hik_cr_free_device_list(arr)
+            finally:
+                self._lib.hik_cr_free_device_list(arr)
+        except OSError:
+            if not hid:
+                raise
+            out = []
+        known = {row[0] for row in out}
+        for row in hid:
+            if row[0] not in known:
+                out.append(row)
+        return out
 
     def start_device(
         self,
@@ -148,6 +163,11 @@ class HikCodeReader:
     ) -> None:
         if clear_bcr and on_bcr is not None:
             raise ValueError("clear_bcr 与 on_bcr 不可同时指定")
+        if self._hid.has(sn):
+            self._hid.start(sn, on_bcr, clear=clear_bcr)
+            if clear_bcr:
+                self._bcr_keepalive.pop(sn, None)
+            return
         if clear_bcr:
             bcr_action = HIK_CR_BCR_CLEAR
             cb_arg = cast(0, BcrCallback)
@@ -196,7 +216,12 @@ class HikCodeReader:
             self._bcr_keepalive[sn] = cb_arg
 
     def stop_device(self, sn: str) -> None:
+        if self._hid.stop(sn):
+            return
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))
 
     def trigger_device(self, sn: str) -> None:
+        # HID 键盘型读码器没有软触发：扫码即回调，这里直接返回。
+        if self._hid.trigger(sn):
+            return
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))
