@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from ctypes import CFUNCTYPE, POINTER, Structure, byref, c_char_p, c_int, c_size_t, c_void_p, cast
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -55,6 +56,12 @@ _HIK_CR_ENV_VAR = "HIK_CODE_READER_DLL"
 _HIK_CR_DLL_NAME = "hik_code_reader.dll"
 
 
+def _hid_enabled_from_env() -> bool:
+    """HID 后端开关：默认开启；``HIK_CODE_READER_DISABLE_HID=1/true/yes/on`` 关闭。"""
+    raw = os.environ.get("HIK_CODE_READER_DISABLE_HID", "").strip().lower()
+    return raw not in {"1", "true", "yes", "on"}
+
+
 @dataclass
 class OpenParams:
     """起流前 GenICam 项；未填字段走 C++ 默认。"""
@@ -89,6 +96,12 @@ class HikCodeReader:
         )
         self._bcr_keepalive: dict[str, BcrCallback] = {}
         self._hid = _hid.HidRegistry()
+        self._hid_enabled = _hid_enabled_from_env()
+        # 最近一次 C API 枚举返回的 SN（GigE/网络设备）：这些 SN 必须优先走 C API。
+        self._net_serials: set[str] = set()
+        # 已经用 C API 起流 / 已经用 HID 起流的 SN，供 stop/trigger 在没先 enum 时判断。
+        self._network_started: set[str] = set()
+        self._hid_started: set[str] = set()
         self._setup_prototypes()
 
     def _setup_prototypes(self) -> None:
@@ -118,13 +131,32 @@ class HikCodeReader:
         if code != HIK_CR_OK:
             raise OSError(code, self.last_error())
 
+    def _hid_preferred(self, sn: str) -> bool:
+        """该 SN 是否走 HID 后端。
+
+        规则：**C API 枚举到的网络设备优先**；只有 C API 没返回该 SN 时，才允许 HID 兜底。
+        已经用 HID 起流的 SN 继续走 HID，避免枚举状态抖动导致 stop/trigger 打错后端。
+        ``HIK_CODE_READER_DISABLE_HID=1`` 可整体关闭 HID。
+        """
+        if not self._hid_enabled:
+            return False
+        if sn in self._hid_started:
+            return True
+        if sn in self._net_serials or sn in self._network_started:
+            return False
+        return True
+
     def enum_devices(self) -> list[tuple[str, str, str]]:
         """枚举在线读码器，返回 (序列号, GigE 导出 IP, 型号)。
 
-        Linux 上会额外合并 HID 键盘型 USB 读码器（型号 ``MV-IDHID-USB``，
-        IP 为空串）；它们不走厂商 SDK，由 ``_hid`` 直接读 ``/dev/input/event*``。
+        **网络设备优先**：C API（GigE/私有协议）返回的 SN 记入 ``_net_serials``，
+        这些 SN 的 ``start_device`` 会走 C API，不再被 HID 抢占。
+        Linux 上 C API 没返回的 USB 键盘型读码器才由 ``_hid`` 补进来（型号
+        ``MV-IDHID-USB``，IP 为空串）；它们不走厂商 SDK，由 ``_hid`` 直接读
+        ``/dev/input/event*``。``HIK_CODE_READER_DISABLE_HID=1`` 可关闭 HID。
         """
-        hid = self._hid.refresh()
+        hid = self._hid.refresh() if self._hid_enabled else []
+        self._net_serials = set()
         try:
             arr = POINTER(HikCrDeviceInfo)()
             n = c_int(0)
@@ -140,6 +172,7 @@ class HikCodeReader:
                             d.model_name.split(b"\0", 1)[0].decode("utf-8", errors="replace"),
                         )
                     )
+                self._net_serials = {row[0] for row in out}
             finally:
                 self._lib.hik_cr_free_device_list(arr)
         except OSError:
@@ -163,8 +196,9 @@ class HikCodeReader:
     ) -> None:
         if clear_bcr and on_bcr is not None:
             raise ValueError("clear_bcr 与 on_bcr 不可同时指定")
-        if self._hid.has(sn):
+        if self._hid_preferred(sn) and self._hid.has(sn):
             self._hid.start(sn, on_bcr, clear=clear_bcr)
+            self._hid_started.add(sn)
             if clear_bcr:
                 self._bcr_keepalive.pop(sn, None)
             return
@@ -209,6 +243,7 @@ class HikCodeReader:
                 c_void_p(bcr_user_data),
             )
         )
+        self._network_started.add(sn)
         # keepalive 在 C 登记成功后再更新：失败时不留残余 thunk/闭包；CLEAR 成功后再弹出
         if clear_bcr:
             self._bcr_keepalive.pop(sn, None)
@@ -216,12 +251,15 @@ class HikCodeReader:
             self._bcr_keepalive[sn] = cb_arg
 
     def stop_device(self, sn: str) -> None:
-        if self._hid.stop(sn):
+        if self._hid_preferred(sn) and self._hid.stop(sn):
+            self._hid_started.discard(sn)
             return
         self.check(self._lib.hik_cr_stop_device(sn.encode("utf-8")))
+        self._network_started.discard(sn)
+        self._hid_started.discard(sn)
 
     def trigger_device(self, sn: str) -> None:
         # HID 键盘型读码器没有软触发：扫码即回调，这里直接返回。
-        if self._hid.trigger(sn):
+        if self._hid_preferred(sn) and self._hid.trigger(sn):
             return
         self.check(self._lib.hik_cr_trigger_device(sn.encode("utf-8")))

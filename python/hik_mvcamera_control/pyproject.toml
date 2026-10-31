@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hik-mvcamera-control"
-version = "0.3.2"
+version = "0.3.3"
 description = "ctypes bindings for Hikrobot MVS camera (MvCamera) + code reader (MvCodeReader) C API — Windows x64 ships native DLLs, Linux x86_64 ships .so + bundled vendor runtime"
 readme = "README.md"
 requires-python = ">=3.10"
