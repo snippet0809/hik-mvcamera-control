@@ -321,6 +321,26 @@
 <li><strong>BCR 回调指针生命周期</strong>：<code>hik_cr_start_device</code> 的 BCR 回调传出的 <code>codes</code> 指针指向 SDK 保留到「下次解码」的结果，<strong>在回调返回后仍短暂有效</strong>，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。</li>
 <li><strong>C API / FFI</strong>：C 函数前缀 <code>hik_cr_*</code>，返回 <code>HikCrResult</code>，错误信息用 <code>hik_cr_last_error_copy</code> 按线程读取。正式发布用 <strong><code>python/hik_code_reader</code></strong>（wheel 内嵌 DLL）；<code>ffi/python</code> 为同逻辑参考副本。Go 见 <strong><code>hikcr/</code></strong>（读码器）与 <strong><code>hikcv/</code></strong>（相机）。</li>
 </ul>
+<h2>相机 ROI 裁切（起流前）</h2>
+<p><code>CameraOpenParams</code> / <code>HikCvOpenParams</code> 在原有的 <code>width</code> / <code>height</code> 之外多了三个字段：<br />
+<code>offsetX/offsetY</code>（C ABI：<code>offset_x/offset_y</code>）与一个开关 <code>applyRoi/apply_roi</code>。<br />
+开关非 0 时，起流前按 <strong><code>OffsetX</code> → <code>OffsetY</code> → <code>Width</code> → <code>Height</code></strong> 的顺序写进相机。</p>
+<ul>
+<li><strong>偏移为什么必须排在尺寸前面</strong>：相机的 GenICam 在写 <code>Height</code> 的当下就校验 <code>OffsetY + Height</code><br />
+  是否超出传感器；先缩高度再挪窗口，中间态会越界被拒（<code>0x80000203</code>）。</li>
+<li><strong>为什么另开开关而不是拿 <code>-1</code> 当哨兵</strong>：<code>0</code> 是合法偏移值，「零值即不写」没法表达「写 0」；<br />
+  开关为零时老调用方行为完全不变（线阵相机那条路径依旧一个参数都不写）。</li>
+<li><strong>字段一律追加在结构体末尾</strong>：调用方按指针传入，老二进制只读前缀，不会错位；反过来，<br />
+<strong>老 wrapper + 新头文件</strong>会静默忽略 ROI（不报错也不生效），升级时头与二进制要一起换。</li>
+</ul>
+<p>典型用法（把 3072×2048 的面阵相机裁成「保留下半幅 1024 行」）：</p>
+<pre><code class="language-c">HikCvOpenParams p = {0};
+p.offset_x = 0;
+p.offset_y = 1024;   // 窗口挪到第 1024 行
+p.height   = 1024;   // 只取 1024 行
+p.apply_roi = 1;
+hik_cv_start_device(&quot;DB1664058&quot;, &amp;p, HIK_CV_FRAME_SET, cb, NULL);
+</code></pre>
 <h2>在 GitHub 上托管分发（维护者）</h2>
 <p>GitHub Packages <strong>没有</strong>与 PyPI 对等的 Python 包仓，也<strong>没有</strong>替代 <code>go get</code> 的独立 Go Registry。本仓库采用 <strong>「Releases + GitHub Pages（PEP 503）+ Git 标签」</strong>，全部留在 GitHub 上完成托管。</p>
 <h3>原理简述</h3>
