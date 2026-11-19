@@ -4,11 +4,19 @@
 #       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
 schema              = 2
 source_repo         = https://github.com/snippet0809/hik-mvcamera-control
-source_commit       = 6888475743dda2cc947abed6ec31c20fa2746e52
-source_commit_short = 6888475
-source_date         = 2026-09-15 11:19
-wrapper_version     = 0.3.1
+source_commit       = 37342dec9601b666377270d3ae71f9980007b67e
+source_commit_short = 37342de
+source_date         = 2026-11-19 15:31
+wrapper_version     = 0.4.0
 
+# ── 本次（0.4.0，2026-11-19）：相机 ROI 偏移 ────────────────────────────────
+# 源码新增 HikCvOpenParams.offset_x/offset_y + apply_roi（起流前写 OffsetX/OffsetY，
+# 顺序在 Width/Height 之前）。**Linux 的 libhik_mvcamera.so 已按同一 commit 重建并替换；
+# Windows 的 hik_mvcamera.dll 仍是 0.3.1 那份**，需要在 Windows 侧或 CI 上重建后补提交。
+# 影响面可控：老 DLL 会静默忽略 apply_roi（帧仍是满幅），消费方只要按「起流后读回
+# Height/OffsetY 校验」的方式使用就能自动退回满幅 + 软件裁切，不会出错帧。
+# 在 Windows 产物补提交之前，请勿把 runtime/ 同步到只跑 Windows 的消费方。
+#
 # ── 分发模型（2026-09-12 起，Windows 侧改口径）──────────────────────────────
 # Windows 的**厂商**运行时不再随仓库分发，改由使用方自行安装 MVS/IDMVS 提供；
 #   runtime/windows-x86_64/bin/ 现在只有本项目自己的两个 wrapper。
