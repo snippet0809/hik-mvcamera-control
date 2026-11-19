@@ -23,6 +23,12 @@ void applyOpenParams(CameraDevice* d, const CameraOpenParams& p) {
         checkSdk<MV_OK>(MV_CC_SetEnumValueByString(h, "TriggerSource", p.triggerSource.c_str()),
                  "SetEnum(TriggerSource)");
     }
+    // ROI 偏移必须先于 Width/Height：相机的 GenICam 会在写入时校验 Offset+Size 是否越界，
+    // 先改尺寸再挪窗口，中间态可能直接超出传感器范围被拒（0x80000203）。
+    if (p.applyRoi) {
+        checkSdk<MV_OK>(MV_CC_SetIntValue(h, "OffsetX", p.offsetX), "SetInt(OffsetX)");
+        checkSdk<MV_OK>(MV_CC_SetIntValue(h, "OffsetY", p.offsetY), "SetInt(OffsetY)");
+    }
     if (p.width > 0) {
         checkSdk<MV_OK>(MV_CC_SetIntValue(h, "Width", p.width), "SetInt(Width)");
     }

@@ -71,6 +71,13 @@ typedef struct HikCvOpenParams {
     int net_trans_mode;  // 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
     int width;           // >0 时起流前写 Width
     int height;          // >0 时起流前写 Height（线阵相机：每帧行数）
+    // ROI 偏移：仅 apply_roi 非 0 时在起流前写入 OffsetX/OffsetY，且**排在 Width/Height 之前**
+    // （先把窗口挪到位再改尺寸，否则 OffsetY+Height 会先越界被相机拒掉）。
+    // 0 是合法偏移，所以另开一个开关而不是拿 -1 当哨兵：老调用方零值即「不写」，行为不变。
+    // 新字段一律追加在结构体末尾：调用方按指针传入，老二进制读到前缀即可，不会错位。
+    int offset_x;        // ROI 左边界（apply_roi 非 0 时写）
+    int offset_y;        // ROI 上边界（apply_roi 非 0 时写）
+    int apply_roi;       // 非 0 = 起流前写 OffsetX/OffsetY；0 = 不碰（默认）
 } HikCvOpenParams;
 
 typedef enum HikCvParamType {

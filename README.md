@@ -52,6 +52,30 @@ flowchart TB
 - **BCR 回调指针生命周期**：`hik_cr_start_device` 的 BCR 回调传出的 `codes` 指针指向 SDK 保留到「下次解码」的结果，**在回调返回后仍短暂有效**，供把回调排队的 FFI（koffi→JS 主线程、ctypes 异步等）延迟消费；同步消费（cgo）行为不变。
 - **C API / FFI**：C 函数前缀 `hik_cr_*`，返回 `HikCrResult`，错误信息用 `hik_cr_last_error_copy` 按线程读取。正式发布用 **`python/hik_code_reader`**（wheel 内嵌 DLL）；`ffi/python` 为同逻辑参考副本。Go 见 **`hikcr/`**（读码器）与 **`hikcv/`**（相机）。
 
+## 相机 ROI 裁切（起流前）
+
+`CameraOpenParams` / `HikCvOpenParams` 在原有的 `width` / `height` 之外多了三个字段：
+`offsetX/offsetY`（C ABI：`offset_x/offset_y`）与一个开关 `applyRoi/apply_roi`。
+开关非 0 时，起流前按 **`OffsetX` → `OffsetY` → `Width` → `Height`** 的顺序写进相机。
+
+- **偏移为什么必须排在尺寸前面**：相机的 GenICam 在写 `Height` 的当下就校验 `OffsetY + Height`
+  是否超出传感器；先缩高度再挪窗口，中间态会越界被拒（`0x80000203`）。
+- **为什么另开开关而不是拿 `-1` 当哨兵**：`0` 是合法偏移值，「零值即不写」没法表达「写 0」；
+  开关为零时老调用方行为完全不变（线阵相机那条路径依旧一个参数都不写）。
+- **字段一律追加在结构体末尾**：调用方按指针传入，老二进制只读前缀，不会错位；反过来，
+  **老 wrapper + 新头文件**会静默忽略 ROI（不报错也不生效），升级时头与二进制要一起换。
+
+典型用法（把 3072×2048 的面阵相机裁成「保留下半幅 1024 行」）：
+
+```c
+HikCvOpenParams p = {0};
+p.offset_x = 0;
+p.offset_y = 1024;   // 窗口挪到第 1024 行
+p.height   = 1024;   // 只取 1024 行
+p.apply_roi = 1;
+hik_cv_start_device("DB1664058", &p, HIK_CV_FRAME_SET, cb, NULL);
+```
+
 ## 在 GitHub 上托管分发（维护者）
 
 GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代 `go get` 的独立 Go Registry。本仓库采用 **「Releases + GitHub Pages（PEP 503）+ Git 标签」**，全部留在 GitHub 上完成托管。

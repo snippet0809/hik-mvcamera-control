@@ -51,6 +51,9 @@ CameraOpenParams cppCameraOpenParams(const HikCvOpenParams* c) {
     p.netTransMode = c->net_trans_mode;
     p.width = c->width;
     p.height = c->height;
+    p.offsetX = c->offset_x;
+    p.offsetY = c->offset_y;
+    p.applyRoi = c->apply_roi != 0;
     return p;
 }
 

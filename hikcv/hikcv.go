@@ -98,6 +98,10 @@ type OpenParams struct {
 	TriggerMode, TriggerSource *string
 	NetTransMode               int
 	Width, Height              int // >0 时起流前写入；线阵相机 Height 是每帧行数
+	// ROI 偏移：仅 ApplyROI 为 true 时起流前写 OffsetX/OffsetY（排在 Width/Height 之前）。
+	// Offset 为 0 是合法取值，所以要靠 ApplyROI 显式开启，而不是「零值即不写」。
+	OffsetX, OffsetY int
+	ApplyROI         bool
 }
 
 type DeviceInfo struct {
@@ -194,6 +198,11 @@ func StartDevice(serial string, open *OpenParams, frameAction int, fn FrameCallb
 		copen.net_trans_mode = C.int(open.NetTransMode)
 		copen.width = C.int(open.Width)
 		copen.height = C.int(open.Height)
+		copen.offset_x = C.int(open.OffsetX)
+		copen.offset_y = C.int(open.OffsetY)
+		if open.ApplyROI {
+			copen.apply_roi = 1
+		}
 		copenPtr = &copen
 	}
 

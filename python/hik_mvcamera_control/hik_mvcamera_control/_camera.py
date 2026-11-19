@@ -73,6 +73,12 @@ class CameraOpenParams:
     trigger_mode: str | None = None
     trigger_source: str | None = None
     net_trans_mode: int = 0  # 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
+    width: int = 0  # >0 时起流前写 Width
+    height: int = 0  # >0 时起流前写 Height（线阵相机：每帧行数）
+    # ROI 偏移：apply_roi=True 时起流前写 OffsetX/OffsetY（排在 Width/Height 之前）
+    offset_x: int = 0
+    offset_y: int = 0
+    apply_roi: bool = False
 
 
 @dataclass
@@ -120,6 +126,9 @@ class HikCvOpenParams(Structure):
         ("net_trans_mode", c_int),  # 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
         ("width", c_int),   # >0 时起流前写 Width
         ("height", c_int),  # >0 时起流前写 Height（线阵相机：每帧行数）
+        ("offset_x", c_int),   # apply_roi 非 0 时写 OffsetX
+        ("offset_y", c_int),   # apply_roi 非 0 时写 OffsetY
+        ("apply_roi", c_int),  # 非 0 = 起流前写 ROI 偏移
     ]
 
 
@@ -236,6 +245,11 @@ class HikCamera:
             keep: list[bytes] = []
             c_open = HikCvOpenParams()
             c_open.net_trans_mode = int(params.net_trans_mode or 0)
+            c_open.width = int(getattr(params, "width", 0) or 0)
+            c_open.height = int(getattr(params, "height", 0) or 0)
+            c_open.offset_x = int(getattr(params, "offset_x", 0) or 0)
+            c_open.offset_y = int(getattr(params, "offset_y", 0) or 0)
+            c_open.apply_roi = 1 if getattr(params, "apply_roi", False) else 0
             if params.trigger_mode is not None:
                 b = params.trigger_mode.encode("utf-8")
                 keep.append(b)

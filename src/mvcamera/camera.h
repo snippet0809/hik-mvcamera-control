@@ -22,6 +22,9 @@ struct CameraOpenParams {
     int netTransMode{0};                 // 0=不设置（SDK 默认驱动模式）; 1=驱动; 2=socket（免 GigE 过滤驱动）
     int width{0};                        // >0 时起流前写 Width
     int height{0};                       // >0 时起流前写 Height（线阵相机：每帧行数）
+    int offsetX{0};                      // applyRoi 时起流前写 OffsetX（在 Width/Height 之前）
+    int offsetY{0};                      // applyRoi 时起流前写 OffsetY
+    bool applyRoi{false};                // true = 写 ROI 偏移；false = 不碰（默认，老行为）
 };
 
 /** 单帧元数据（不含图像数据；数据经回调的 data/len 传递）。 */
