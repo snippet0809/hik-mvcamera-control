@@ -33,8 +33,10 @@ from ._camera import (
     HikCamera,
     HikCvDeviceInfo,
     HikCvFrameInfo,
+    HikCvNetStats,
     HikCvOpenParams,
     HikCvParamValue,
+    NetStats,
 )
 from ._reader import (
     BcrCallback,
@@ -85,9 +87,11 @@ __all__ = [
     "HikCrDeviceInfo",
     "HikCrOpenParams",
     "HikCvDeviceInfo",
+    "HikCvNetStats",
     "HikCvFrameInfo",
     "HikCvOpenParams",
     "HikCvParamValue",
+    "NetStats",
     "OpenParams",
     "diagnose_camera_runtime_context",
     "diagnose_camera_windows_native_load",

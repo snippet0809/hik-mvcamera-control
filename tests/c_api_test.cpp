@@ -7,6 +7,7 @@
  */
 #include "code_reader_detail.h"
 #include "hik_code_reader/c_api.h"
+#include "hik_mvcamera/c_api.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -80,4 +81,17 @@ TEST(CodeReaderCApiTest, StopGrabbingIsNoOpOnUnknownDevice) {
     // 头文件契约：未开流时为空操作 —— 未知序列号须返回成功而非报错。
     EXPECT_EQ(hik_cr_stop_grabbing(kFakeSn), HIK_CR_OK);
     EXPECT_EQ(hik_cr_stop_grabbing(nullptr), HIK_CR_ERR_INVALID_ARG);
+}
+
+TEST(MvCameraCApiTest, GetNetStatsRejectsNullArgs) {
+    HikCvNetStats stats{};
+    EXPECT_EQ(hik_cv_get_net_stats(nullptr, &stats), HIK_CV_ERR_INVALID_ARG);
+    EXPECT_EQ(hik_cv_get_net_stats("TEST-SN-NET-STATS", nullptr), HIK_CV_ERR_INVALID_ARG);
+}
+
+TEST(MvCameraCApiTest, GetNetStatsRequiresStartedDevice) {
+    // 从未 start 过的序列号：不碰 SDK 就该在「设备句柄不存在」这一层被拒（LOGIC），
+    // 而不是把 MV_CC_GetAllMatchInfo 的错误码当 RUNTIME 甩出去。
+    HikCvNetStats stats{};
+    EXPECT_EQ(hik_cv_get_net_stats("TEST-SN-NEVER-STARTED", &stats), HIK_CV_ERR_LOGIC);
 }

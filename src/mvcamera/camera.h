@@ -37,6 +37,22 @@ struct FrameInfo {
     uint64_t hostTimestamp{0};
 };
 
+/**
+ * 取流网络统计（MV_CC_GetAllMatchInfo + MV_MATCH_TYPE_NET_DETECT 的字段副本）。
+ *
+ * 语义按海康的定义：所有计数都是**本次 StartGrabbing 到 StopGrabbing 之间**的累计值，
+ * 重启取流即从零重新计。丢包数（lostPacketCount）是链路层真正丢掉的 GVSP 包，
+ * 丢帧数是因此没能凑齐、被丢弃的整帧；重传两项配合 MV_GIGE_SetResend 才非零。
+ */
+struct NetStats {
+    int64_t receiveDataSize{0};           // 已接收数据字节数
+    int64_t lostPacketCount{0};           // 丢包数
+    unsigned int lostFrameCount{0};       // 丢帧数
+    unsigned int receivedFrameCount{0};   // 已接收帧数
+    int64_t requestResendPacketCount{0};  // 请求重发包数
+    int64_t resendPacketCount{0};         // 实际重发包数
+};
+
 enum class CamParamType { Int, Float, Bool, Enum, String, Command };
 
 /** 参数值：Int / Float / Bool / Enum(字符串 symbolic 值走 SetEnumValueByString)。 */
@@ -64,6 +80,18 @@ CamParamValue getCameraParam(const std::string& sn, const std::string& name);
 
 /** 执行 GenICam 命令节点（如 "TriggerSoftware"、"UserSetLoad"）；设备须已 startCamera。 */
 void runCameraCommand(const std::string& sn, const std::string& name);
+
+/**
+ * 读本次取流的网络统计（丢包 / 丢帧 / 重传）。
+ *
+ * 前置条件由海康的接口决定：设备须已 startCamera 且**处于取流中**（统计窗口是本次起流到停流），
+ * 只支持 GigE 相机（MV-GE / MV-CL 系列），USB3 相机没有丢包统计。
+ * 未起流、非 GigE、Sdk 调用失败时分别抛 logic_error / runtime_error。
+ *
+ * 判定建议：单瓶采集前后各取一次做差。丢包/丢帧长期为 0 才说明链路干净；
+ * 偶发 1~2 个包通常由重传兜住（os 缺省不重传），此刻该调 GevSCPD / 包大小或检查网卡。
+ */
+NetStats getCameraNetStats(const std::string& sn);
 
 /**
  * JPEG 输出缓冲上界：按 RGB24 最坏体积（宽 × 高 × 3）加固定富余量计算，**不做编码**。

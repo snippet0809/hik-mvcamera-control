@@ -100,6 +100,22 @@ class CameraFrame:
     host_timestamp: int
 
 
+@dataclass
+class NetStats:
+    """本次取流的网络统计（丢包/丢帧/重传）。
+
+    计数窗口是「本次 start 到 stop 之间」，重启取流即清零；仅 GigE 相机有这些统计。
+    采集前后各读一次做差，才看得出这一瓶（这一次扫描）有没有丢。
+    """
+
+    receive_data_size: int  # 已接收数据字节数
+    lost_packet_count: int  # 丢包数
+    lost_frame_count: int  # 丢帧数
+    received_frame_count: int  # 已接收帧数
+    request_resend_packet_count: int  # 请求重发包数
+    resend_packet_count: int  # 实际重发包数
+
+
 class HikCvDeviceInfo(Structure):
     _fields_ = [
         ("serial_number", ctypes.c_char * HIK_CV_SERIAL_MAX),
@@ -116,6 +132,17 @@ class HikCvFrameInfo(Structure):
         ("frame_len", c_uint),
         ("frame_num", c_uint),
         ("host_timestamp", c_uint64),
+    ]
+
+
+class HikCvNetStats(Structure):
+    _fields_ = [
+        ("receive_data_size", c_int64),  # 已接收数据字节数
+        ("lost_packet_count", c_int64),  # 丢包数
+        ("lost_frame_count", c_uint),  # 丢帧数
+        ("net_recv_frame_count", c_uint),  # 已接收帧数
+        ("request_resend_packet_count", c_int64),  # 请求重发包数
+        ("resend_packet_count", c_int64),  # 实际重发包数
     ]
 
 
@@ -177,6 +204,8 @@ class HikCamera:
             getattr(L, name).restype = c_int
         L.hik_cv_force_ip.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
         L.hik_cv_force_ip.restype = c_int
+        L.hik_cv_get_net_stats.argtypes = [c_char_p, POINTER(HikCvNetStats)]
+        L.hik_cv_get_net_stats.restype = c_int
         L.hik_cv_set_param.argtypes = [c_char_p, c_char_p, POINTER(HikCvParamValue)]
         L.hik_cv_set_param.restype = c_int
         L.hik_cv_get_param.argtypes = [c_char_p, c_char_p, POINTER(HikCvParamValue)]
@@ -292,6 +321,22 @@ class HikCamera:
         self.check(
             self._lib.hik_cv_force_ip(sn.encode("utf-8"), ip.encode("utf-8"), subnet_mask.encode("utf-8"),
                                       gateway.encode("utf-8"))
+        )
+
+    def get_net_stats(self, sn: str) -> NetStats:
+        """读本次取流的网络统计（丢包/丢帧/重传）；须已 start，仅 GigE 相机。
+
+        计数是「本次 start 到 stop」的累计值，建议采集前后各读一次做差。
+        """
+        out = HikCvNetStats()
+        self.check(self._lib.hik_cv_get_net_stats(sn.encode("utf-8"), byref(out)))
+        return NetStats(
+            receive_data_size=int(out.receive_data_size),
+            lost_packet_count=int(out.lost_packet_count),
+            lost_frame_count=int(out.lost_frame_count),
+            received_frame_count=int(out.net_recv_frame_count),
+            request_resend_packet_count=int(out.request_resend_packet_count),
+            resend_packet_count=int(out.resend_packet_count),
         )
 
     @staticmethod

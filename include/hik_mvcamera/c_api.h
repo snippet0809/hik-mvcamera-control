@@ -129,6 +129,28 @@ HIK_CV_API HikCvResult hik_cv_trigger_device(const char* serial_utf8);
 HIK_CV_API HikCvResult hik_cv_force_ip(const char* serial_utf8, const char* ip, const char* subnet_mask,
                                        const char* gateway);
 
+/**
+ * 本次取流的网络统计（丢包 / 丢帧 / 重传），对应 C++ `NetStats`。
+ * 计数窗口是「本次 hik_cv_start_device 到 hik_cv_stop_device 之间」，重启取流即清零重新计。
+ */
+typedef struct HikCvNetStats {
+    int64_t receive_data_size;            /**< 已接收数据字节数 */
+    int64_t lost_packet_count;            /**< 丢包数（链路层丢掉的 GVSP 包） */
+    unsigned int lost_frame_count;        /**< 丢帧数（凑不齐被丢弃的整帧） */
+    unsigned int net_recv_frame_count;    /**< 已接收帧数 */
+    int64_t request_resend_packet_count;  /**< 请求重发包数（需开启重传才有） */
+    int64_t resend_packet_count;          /**< 实际重发包数 */
+} HikCvNetStats;
+
+/**
+ * 读相机网络统计（MV_CC_GetAllMatchInfo + MV_MATCH_TYPE_NET_DETECT）。
+ *
+ * - 须在 `hik_cv_start_device` 起流**之后**调用；未起流返回 HIK_CV_ERR_LOGIC。
+ * - 仅 GigE 相机支持（MV-GE / MV-CL 系列）；USB3 相机返回 HIK_CV_ERR_RUNTIME。
+ * - 典型用法：采集前后各读一次做差，看这一瓶（这一次扫描）是否丢包/丢帧。
+ */
+HIK_CV_API HikCvResult hik_cv_get_net_stats(const char* serial_utf8, HikCvNetStats* out_stats);
+
 /** 数值参数读写（Int/Float/Bool/Enum/Command）。 */
 HIK_CV_API HikCvResult hik_cv_set_param(const char* serial_utf8, const char* name,
                                         const HikCvParamValue* value);

@@ -300,6 +300,21 @@ HIK_CV_API HikCvResult hik_cv_encode_jpeg(const char* serial_utf8, const HikCvFr
     });
 }
 
+HIK_CV_API HikCvResult hik_cv_get_net_stats(const char* serial_utf8, HikCvNetStats* out_stats) {
+    if (!nonNull(serial_utf8, "serial_utf8") || !out_stats) {
+        return HIK_CV_ERR_INVALID_ARG;
+    }
+    return wrap([&] {
+        const NetStats s = getCameraNetStats(serial_utf8);
+        out_stats->receive_data_size = s.receiveDataSize;
+        out_stats->lost_packet_count = s.lostPacketCount;
+        out_stats->lost_frame_count = s.lostFrameCount;
+        out_stats->net_recv_frame_count = s.receivedFrameCount;
+        out_stats->request_resend_packet_count = s.requestResendPacketCount;
+        out_stats->resend_packet_count = s.resendPacketCount;
+    });
+}
+
 HIK_CV_API size_t hik_cv_last_error_copy(char* out_utf8, size_t buf_size) {
     const size_t need = g_err.size() + 1;
     if (!out_utf8 || !buf_size) {

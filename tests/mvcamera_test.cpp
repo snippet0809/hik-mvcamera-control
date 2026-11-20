@@ -125,3 +125,44 @@ TEST(MvCameraTest, SmokeEnumStartTriggerStopAndReopen) {
     std::cout << "[test] done, frame callback count=" << frameEvents.load() << '\n';
     logTestStep("14_end | 用例结束");
 }
+
+// 网络统计的契约：取流中能读到、停流后拒绝。
+//
+// 只选 GigE 相机（netExportIp 非空即 GigE）——USB3 相机没有丢包统计，SDK 会直接报错。
+// 不断言「丢包一定为 0」：那是现场环境的属性，不是接口契约；这里只验接口能读、
+// 字段落在合理范围、且停流后明确拒绝（避免上层在停流后仍拿到一份陈旧的 0 当真）。
+TEST(MvCameraTest, NetStatsReadableOnlyWhileGrabbing) {
+    std::vector<CameraInfo> devs;
+    ASSERT_NO_THROW(devs = enumCamera());
+    const CameraInfo *gige = nullptr;
+    for (const auto &d : devs) {
+        if (!d.netExportIp.empty()) {
+            gige = &d;
+            break;
+        }
+    }
+    if (!gige) {
+        GTEST_SKIP() << "未枚举到 GigE 相机，跳过网络统计用例";
+    }
+    const std::string sn = gige->serialNumber;
+    std::cout << "[test] net stats on camera sn=" << sn << " ip=" << gige->netExportIp << '\n';
+
+    CameraOpenParams params;
+    params.triggerMode = "Off";  // 自由运行，不依赖触发
+    ASSERT_NO_THROW(startCamera(sn, params, std::nullopt));
+
+    NetStats s;
+    ASSERT_NO_THROW(s = getCameraNetStats(sn));
+    std::cout << "[test] net stats: recv=" << s.receiveDataSize << "B frames=" << s.receivedFrameCount
+              << " lostPackets=" << s.lostPacketCount << " lostFrames=" << s.lostFrameCount
+              << " resendReq=" << s.requestResendPacketCount << " resend=" << s.resendPacketCount << '\n';
+    EXPECT_GE(s.receiveDataSize, 0);
+    EXPECT_GE(s.lostPacketCount, 0);
+    EXPECT_GE(s.receivedFrameCount, 0u);
+    EXPECT_GE(s.requestResendPacketCount, 0);
+    EXPECT_GE(s.resendPacketCount, 0);
+
+    ASSERT_NO_THROW(stopCamera(sn));
+    // 停流后计数器窗口已结束：必须明确拒绝，而不是回一份上一轮的累计值。
+    EXPECT_THROW(getCameraNetStats(sn), std::logic_error);
+}

@@ -260,6 +260,40 @@ func ForceIP(serial, ip, subnetMask, gateway string) error {
 	return check(C.hik_cv_force_ip(cs, cip, cmask, cgw))
 }
 
+// NetStats 本次取流的网络统计（对应 HikCvNetStats）。
+//
+// 计数窗口是「本次 StartDevice 到 StopDevice 之间」，重启取流即清零重新计；
+// 字段语义见 C++ NetStats。仅 GigE 相机有这些统计。
+type NetStats struct {
+	ReceiveDataSize          int64  // 已接收数据字节数
+	LostPacketCount          int64  // 丢包数
+	LostFrameCount           uint32 // 丢帧数
+	ReceivedFrameCount       uint32 // 已接收帧数
+	RequestResendPacketCount int64  // 请求重发包数
+	ResendPacketCount        int64  // 实际重发包数
+}
+
+// GetNetStats 读相机网络统计（丢包 / 丢帧 / 重传）。须已 StartDevice 起流；仅 GigE 相机。
+//
+// 用法上建议「采集前读一次、采集后读一次做差」——单次读到的只是本次取流的累计值，
+// 一瓶几十秒的采集要看的是差分，否则永远读到同一个大数，看不出这一瓶有没有丢。
+func GetNetStats(serial string) (NetStats, error) {
+	cs := C.CString(serial)
+	defer C.free(unsafe.Pointer(cs))
+	var st C.HikCvNetStats
+	if err := check(C.hik_cv_get_net_stats(cs, &st)); err != nil {
+		return NetStats{}, err
+	}
+	return NetStats{
+		ReceiveDataSize:          int64(st.receive_data_size),
+		LostPacketCount:          int64(st.lost_packet_count),
+		LostFrameCount:           uint32(st.lost_frame_count),
+		ReceivedFrameCount:       uint32(st.net_recv_frame_count),
+		RequestResendPacketCount: int64(st.request_resend_packet_count),
+		ResendPacketCount:        int64(st.resend_packet_count),
+	}, nil
+}
+
 // SetParam 写数值/枚举/命令参数；字符串节点请用 SetParamString。
 func SetParam(serial, name string, kind ParamKind, value any) error {
 	cs := C.CString(serial)

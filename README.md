@@ -76,6 +76,49 @@ p.apply_roi = 1;
 hik_cv_start_device("DB1664058", &p, HIK_CV_FRAME_SET, cb, NULL);
 ```
 
+## 相机网络统计（丢包 / 丢帧 / 重传）
+
+GigE 相机最典型的隐性故障是链路丢包：帧照出、图照存，只是偶尔缺行或整帧丢掉，界面上看不出来。
+海康 SDK 为此提供了 `MV_CC_GetAllMatchInfo` + `MV_MATCH_TYPE_NET_DETECT`，本仓库把它封成三层同名接口：
+
+| 层 | 接口 |
+|---|---|
+| C++ | `NetStats getCameraNetStats(const std::string& sn)`（`src/mvcamera/camera.h`） |
+| C ABI | `HikCvResult hik_cv_get_net_stats(const char* sn, HikCvNetStats* out)` |
+| Go | `hikcv.GetNetStats(serial) (hikcv.NetStats, error)` |
+| Python | `HikCamera.get_net_stats(sn) -> NetStats` |
+
+Node 绑定（`ffi/node`）暂未暴露该接口：它需要重新编 node 插件，且 CI 不发 node 包；
+需要时按 `encodeJpeg` 的写法在 `ffi/node/src/camera_addon.cc` 里加一个同样薄的方法即可。
+
+字段：`receiveDataSize`（收字节）、`lostPacketCount`（**丢包数**）、`lostFrameCount`（丢帧数）、
+`receivedFrameCount`（收帧数）、`requestResendPacketCount` / `resendPacketCount`（请求/实际重传包数）。
+
+语义与前置条件（都是海康接口本身的约束，封装没改）：
+
+- **只支持 GigE 相机**（MV-GE / MV-CL 线阵系列）。USB3 相机没有丢包统计，调用报
+  `HIK_CV_ERR_RUNTIME`；`MV_CC_GetAllMatchInfo` 对 CameraLink 设备也不支持。
+- **只能在起流之后调用**（`hik_cv_start_device` 之后）。未起流报 `HIK_CV_ERR_LOGIC`，
+  停流后同样拒绝——避免上层拿上一轮的旧计数当本轮结果。
+- **计数窗口是「本次 StartGrabbing 到 StopGrabbing 之间」**，重启取流从零重新计。
+  所以单次读到的只是累计值，**要判断这一瓶（这一次扫描）有没有丢，必须采集前后各读一次做差**。
+
+典型用法（Go）：
+
+```go
+before, _ := hikcv.GetNetStats(sn)   // 采集前
+// ... 触发 / 出图 / 存图 ...
+after, _ := hikcv.GetNetStats(sn)    // 采集后
+if d := after.LostPacketCount - before.LostPacketCount; d > 0 {
+    log.Printf("本次采集丢包 %d 个，丢帧 %d", d, after.LostFrameCount-before.LostFrameCount)
+}
+```
+
+把丢包真正补回来要用重传：`MV_GIGE_SetResend(handle, 1, maxResendPercent, timeoutMs)`，
+再配 `MV_GIGE_SetResendMaxRetryTimes` / `MV_GIGE_SetResendTimeInterval`（本仓库未封装——
+它会改相机/取流行为，属于现场调优而不是监控）。降丢包的常规手段是按 `MV_CC_GetOptimalPacketSize`
+设包大小、调大 `GevSCPD`（包间隔）、或改用 jumbo frame 与独占网卡。
+
 ## 在 GitHub 上托管分发（维护者）
 
 GitHub Packages **没有**与 PyPI 对等的 Python 包仓，也**没有**替代 `go get` 的独立 Go Registry。本仓库采用 **「Releases + GitHub Pages（PEP 503）+ Git 标签」**，全部留在 GitHub 上完成托管。
@@ -462,6 +505,20 @@ cmake --build build-ninja
 ```
 
 首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。
+
+**不装 Windows / 不想走 CMake 时，直接重建随包的 wrapper**（产物的编译参数与仓库里提交的那份逐字节一致）：
+
+```bash
+# Linux x86_64（Debian 12 / gcc 12.2，-- 本仓库提交的 .so 就是这条命令的产物）
+bash scripts/build-wrapper-linux.sh
+
+# Windows x64（MinGW-w64 交叉编译，需要 *-posix 线程模型；llvm-dlltool 可选）
+bash scripts/build-wrapper-windows-mingw.sh
+
+# 两者都会改 runtime/，务必重算哈希并跑 ABI 三重守卫
+bash scripts/update-manifest.sh
+bash scripts/verify-runtime.sh
+```
 
 产物说明：
 

@@ -37,3 +37,7 @@ Thumbs.db
 
 # Go test binaries (Windows), local module cache
 ffi/go/**/*.exe
+
+# 海康 SDK 运行期日志（跑测试 / 起过相机就会生成，勿提交）
+MvSdkLog/
+MvSmtLog/
