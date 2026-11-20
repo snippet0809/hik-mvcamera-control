@@ -4,10 +4,33 @@
 #       （踩过：头文件/Go 新、DLL 旧 → 线阵 Height 不生效、读码器枚举 IP 错误）
 schema              = 2
 source_repo         = https://github.com/snippet0809/hik-mvcamera-control
-source_commit       = 37342dec9601b666377270d3ae71f9980007b67e
-source_commit_short = 37342de
-source_date         = 2026-11-19 15:31
-wrapper_version     = 0.4.0
+source_commit       = 54fe703
+source_commit_short = 54fe703
+source_date         = 2026-11-20 14:40
+wrapper_version     = 0.5.0
+
+# ── 本次（0.5.0，2026-11-20）：取流网络统计（丢包 / 丢帧 / 重传）──────────────
+# 源码新增 NetStats / getCameraNetStats + C ABI hik_cv_get_net_stats（13 个导出符号），
+# 底层是 MV_CC_GetAllMatchInfo + MV_MATCH_TYPE_NET_DETECT（仅 GigE、仅取流中有效，
+# 计数窗口为本次 StartGrabbing 到 StopGrabbing）。消费方靠比对前后两次读数做差来判断
+# 「这一瓶有没有丢」——单次读到的是累计值。
+#
+# 两个平台**这次都重建了**，头 == 二进制 == 厂商运行时 三者同代（verify-runtime.sh 全绿）：
+#   - Linux：scripts/build-wrapper-linux.sh（gcc 12.2 / -O2 / -DNDEBUG / -fPIC /
+#     -fvisibility=hidden / --disable-new-dtags -Bsymbolic --no-undefined / RPATH=$ORIGIN）。
+#     该命令的参数与 0.4.0 提交的那份 .so **逐字节一致**（同 SHA256 已验证过），所以
+#     本次产物的差异只可能来自新增的 net_stats.cpp。
+#   - Windows：**首次改为 MinGW-w64 交叉编译**（scripts/build-wrapper-windows-mingw.sh，
+#     GCC 12-posix 线程模型 / -O2 / -static-libgcc -static-libstdc++ -static）。
+#     原因：本机没有 Windows/VS，而加了新导出符号后不重建 DLL 会让
+#     verify-runtime.sh 的 Windows ABI 守卫直接失败（0.4.0 那种「只改结构体」不会）。
+#     导入库用 llvm-dlltool 重新生成（MS COFF，MSVC 与 MinGW 都能链）。
+#     依赖只剩 KERNEL32.dll / msvcrt.dll / 厂商 MVCameraControl.dll，与 MSVC 版语义一致。
+#     **遗留风险**：产物未经真实 Windows 烟测（交叉编译无法执行），首次在有 Windows 的
+#     环境上应跑一次 mvcamera_test（枚举 / 取流 / 触发 / 网络统计）。
+#     顺带修掉 0.4.0 遗留的「Windows DLL 停在 0.3.1」：ROI 字段现在两个平台都生效。
+#   - 另：跑测试会生成 MvSdkLog/ 与 lib/MvSmtLog/（海康 SDK 自己写的日志），已加进
+#     .gitignore 并从 MANIFEST 排除，别再混进 runtime/ 的哈希里。
 
 # ── 本次（0.4.0，2026-11-19）：相机 ROI 偏移 ────────────────────────────────
 # 源码新增 HikCvOpenParams.offset_x/offset_y + apply_roi（起流前写 OffsetX/OffsetY，
@@ -34,6 +57,12 @@ wrapper_version     = 0.4.0
 #   使用方决定，交付时按下方 [vendor.windows-x86_64] 的版本对齐。
 
 # ── wrapper 构建方式 ────────────────────────────────────────────────────────
+# Linux：scripts/build-wrapper-linux.sh（唯一入口，参数见 0.5.0 备注；勿改成 -O3）。
+#   CMake Release 默认是 -O3，与提交产物不是同一份；脚本里的 -O2 才是可复现的那套。
+# Windows（0.5.0 起）：scripts/build-wrapper-windows-mingw.sh —— MinGW-w64 交叉编译。
+#   需要 *-posix 线程模型（win32 模型没有 std::mutex），-static 把 libgcc/libstdc++/
+#   winpthread 全部静态并入，避免在干净工控机上多出三个 MinGW DLL 依赖。
+#   以下这段是 0.3.1/0.4.0（MSVC 构建）的历史说明，仍然成立：
 # Windows：MSVC /MT（静态链接 CRT）。
 #   这两个 DLL 随 runtime/ 分发，若用默认 /MD 会让使用方额外依赖 MSVCP140 /
 #   VCRUNTIME140（微软 VC++ 可再发行组件包里的文件，干净工控机上不一定有），
