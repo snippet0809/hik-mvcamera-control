@@ -20,15 +20,19 @@ wrapper_version     = 0.5.0
 #     -fvisibility=hidden / --disable-new-dtags -Bsymbolic --no-undefined / RPATH=$ORIGIN）。
 #     该命令的参数与 0.4.0 提交的那份 .so **逐字节一致**（同 SHA256 已验证过），所以
 #     本次产物的差异只可能来自新增的 net_stats.cpp。
-#   - Windows：**首次改为 MinGW-w64 交叉编译**（scripts/build-wrapper-windows-mingw.sh，
-#     GCC 12-posix 线程模型 / -O2 / -static-libgcc -static-libstdc++ -static）。
-#     原因：本机没有 Windows/VS，而加了新导出符号后不重建 DLL 会让
-#     verify-runtime.sh 的 Windows ABI 守卫直接失败（0.4.0 那种「只改结构体」不会）。
-#     导入库用 llvm-dlltool 重新生成（MS COFF，MSVC 与 MinGW 都能链）。
-#     依赖只剩 KERNEL32.dll / msvcrt.dll / 厂商 MVCameraControl.dll，与 MSVC 版语义一致。
-#     **遗留风险**：产物未经真实 Windows 烟测（交叉编译无法执行），首次在有 Windows 的
-#     环境上应跑一次 mvcamera_test（枚举 / 取流 / 触发 / 网络统计）。
-#     顺带修掉 0.4.0 遗留的「Windows DLL 停在 0.3.1」：ROI 字段现在两个平台都生效。
+#   - Windows：**本轮刻意不随包**，hik_mvcamera.dll 仍是 0.3.1 的 MSVC 产物。
+#     0.5.0 只在 Linux 上验证过；交叉编译出来的 Windows DLL（MinGW-w64 12 posix /
+#     -static，导出集与头一致、导入库用 llvm-dlltool 重生成）**没条件做真机烟测**，
+#     维护者决定不把未验证的二进制放进 runtime/（2026-11-20）。因此：
+#       * verify-runtime.sh 里登记了 PENDING_CV_WINDOWS="hik_cv_get_net_stats"，
+#         每次运行都会打印这一条；**在 Windows 上重建并提交后必须清空该名单**
+#         （库里一旦有该符号，脚本会直接报错，防止名单过期变成永久豁免）。
+#       * Windows 消费方（desktop）对这一个符号做运行时探测，老 DLL 上降级为
+#         「网络统计不可用」，其余功能不受影响 —— 这也是不随包的前提。
+#     Windows 重建路径二选一，产物提交前必须跑一次相机用例（枚举/取流/触发/网络统计）：
+#       - 有 Windows + VS：按 CMake 流程编 hik_mvcamera_shared（MSVC /MT），
+#         换掉 bin/hik_mvcamera.dll 与 lib/hik_mvcamera.lib；
+#       - 只有 Linux：scripts/build-wrapper-windows-mingw.sh（可复现，但产物仍需烟测）。
 #   - 另：跑测试会生成 MvSdkLog/ 与 lib/MvSmtLog/（海康 SDK 自己写的日志），已加进
 #     .gitignore 并从 MANIFEST 排除，别再混进 runtime/ 的哈希里。
 

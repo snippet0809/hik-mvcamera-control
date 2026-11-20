@@ -512,7 +512,9 @@ cmake --build build-ninja
 # Linux x86_64（Debian 12 / gcc 12.2，-- 本仓库提交的 .so 就是这条命令的产物）
 bash scripts/build-wrapper-linux.sh
 
-# Windows x64（MinGW-w64 交叉编译，需要 *-posix 线程模型；llvm-dlltool 可选）
+# Windows x64（没有 Windows 机器时的交叉编译：MinGW-w64 *-posix 线程模型；llvm-dlltool 可选）
+# 注意：Windows 产物 0.5.0 起**不随仓库提交**（无法真机烟测），重建后要先在 Windows 上
+# 跑一遍相机用例，再提交并清掉 verify-runtime.sh 里的 PENDING_CV_WINDOWS 名单。
 bash scripts/build-wrapper-windows-mingw.sh
 
 # 两者都会改 runtime/，务必重算哈希并跑 ABI 三重守卫
