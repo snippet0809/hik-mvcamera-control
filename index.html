@@ -341,6 +341,60 @@ p.height   = 1024;   // 只取 1024 行
 p.apply_roi = 1;
 hik_cv_start_device(&quot;DB1664058&quot;, &amp;p, HIK_CV_FRAME_SET, cb, NULL);
 </code></pre>
+<h2>相机网络统计（丢包 / 丢帧 / 重传）</h2>
+<p>GigE 相机最典型的隐性故障是链路丢包：帧照出、图照存，只是偶尔缺行或整帧丢掉，界面上看不出来。<br />
+海康 SDK 为此提供了 <code>MV_CC_GetAllMatchInfo</code> + <code>MV_MATCH_TYPE_NET_DETECT</code>，本仓库把它封成三层同名接口：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>接口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C++</td>
+<td><code>NetStats getCameraNetStats(const std::string&amp; sn)</code>（<code>src/mvcamera/camera.h</code>）</td>
+</tr>
+<tr>
+<td>C ABI</td>
+<td><code>HikCvResult hik_cv_get_net_stats(const char* sn, HikCvNetStats* out)</code></td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>hikcv.GetNetStats(serial) (hikcv.NetStats, error)</code></td>
+</tr>
+<tr>
+<td>Python</td>
+<td><code>HikCamera.get_net_stats(sn) -&gt; NetStats</code></td>
+</tr>
+</tbody>
+</table>
+<p>Node 绑定（<code>ffi/node</code>）暂未暴露该接口：它需要重新编 node 插件，且 CI 不发 node 包；<br />
+需要时按 <code>encodeJpeg</code> 的写法在 <code>ffi/node/src/camera_addon.cc</code> 里加一个同样薄的方法即可。</p>
+<p>字段：<code>receiveDataSize</code>（收字节）、<code>lostPacketCount</code>（<strong>丢包数</strong>）、<code>lostFrameCount</code>（丢帧数）、<br />
+<code>receivedFrameCount</code>（收帧数）、<code>requestResendPacketCount</code> / <code>resendPacketCount</code>（请求/实际重传包数）。</p>
+<p>语义与前置条件（都是海康接口本身的约束，封装没改）：</p>
+<ul>
+<li><strong>只支持 GigE 相机</strong>（MV-GE / MV-CL 线阵系列）。USB3 相机没有丢包统计，调用报<br />
+<code>HIK_CV_ERR_RUNTIME</code>；<code>MV_CC_GetAllMatchInfo</code> 对 CameraLink 设备也不支持。</li>
+<li><strong>只能在起流之后调用</strong>（<code>hik_cv_start_device</code> 之后）。未起流报 <code>HIK_CV_ERR_LOGIC</code>，<br />
+  停流后同样拒绝——避免上层拿上一轮的旧计数当本轮结果。</li>
+<li><strong>计数窗口是「本次 StartGrabbing 到 StopGrabbing 之间」</strong>，重启取流从零重新计。<br />
+  所以单次读到的只是累计值，<strong>要判断这一瓶（这一次扫描）有没有丢，必须采集前后各读一次做差</strong>。</li>
+</ul>
+<p>典型用法（Go）：</p>
+<pre><code class="language-go">before, _ := hikcv.GetNetStats(sn)   // 采集前
+// ... 触发 / 出图 / 存图 ...
+after, _ := hikcv.GetNetStats(sn)    // 采集后
+if d := after.LostPacketCount - before.LostPacketCount; d &gt; 0 {
+    log.Printf(&quot;本次采集丢包 %d 个，丢帧 %d&quot;, d, after.LostFrameCount-before.LostFrameCount)
+}
+</code></pre>
+<p>把丢包真正补回来要用重传：<code>MV_GIGE_SetResend(handle, 1, maxResendPercent, timeoutMs)</code>，<br />
+再配 <code>MV_GIGE_SetResendMaxRetryTimes</code> / <code>MV_GIGE_SetResendTimeInterval</code>（本仓库未封装——<br />
+它会改相机/取流行为，属于现场调优而不是监控）。降丢包的常规手段是按 <code>MV_CC_GetOptimalPacketSize</code><br />
+设包大小、调大 <code>GevSCPD</code>（包间隔）、或改用 jumbo frame 与独占网卡。</p>
 <h2>在 GitHub 上托管分发（维护者）</h2>
 <p>GitHub Packages <strong>没有</strong>与 PyPI 对等的 Python 包仓，也<strong>没有</strong>替代 <code>go get</code> 的独立 Go Registry。本仓库采用 <strong>「Releases + GitHub Pages（PEP 503）+ Git 标签」</strong>，全部留在 GitHub 上完成托管。</p>
 <h3>原理简述</h3>
@@ -772,6 +826,19 @@ cmake --build build-mingw
 cmake --build build-ninja
 </code></pre>
 <p>首次配置会从网络下载 GTest；需保证构建环境可访问 GitHub。</p>
+<p><strong>不装 Windows / 不想走 CMake 时，直接重建随包的 wrapper</strong>（产物的编译参数与仓库里提交的那份逐字节一致）：</p>
+<pre><code class="language-bash"># Linux x86_64（Debian 12 / gcc 12.2，-- 本仓库提交的 .so 就是这条命令的产物）
+bash scripts/build-wrapper-linux.sh
+
+# Windows x64（没有 Windows 机器时的交叉编译：MinGW-w64 *-posix 线程模型；llvm-dlltool 可选）
+# 注意：Windows 产物 0.5.0 起**不随仓库提交**（无法真机烟测），重建后要先在 Windows 上
+# 跑一遍相机用例，再提交并清掉 verify-runtime.sh 里的 PENDING_CV_WINDOWS 名单。
+bash scripts/build-wrapper-windows-mingw.sh
+
+# 两者都会改 runtime/，务必重算哈希并跑 ABI 三重守卫
+bash scripts/update-manifest.sh
+bash scripts/verify-runtime.sh
+</code></pre>
 <p>产物说明：</p>
 <ul>
 <li><strong><code>hik_code_reader_static.lib</code> / <code>hik_mvcamera_static.lib</code></strong>：静态库，供 <code>all_tests</code> 等链接。</li>
